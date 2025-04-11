@@ -244,7 +244,15 @@ if 'data' in st.session_state:
         visualizer.show_grid = st.session_state.settings['graph_settings']['show_grid']
         visualizer.default_figsize = st.session_state.settings['graph_settings']['figsize']
         
-        figures = visualizer.create_summary_dashboard()
+        # Create dashboard visualizations
+        figures = visualizer.create_summary_dashboard(x_range=(1, 4))  # Show weeks 1-4 by default
+        
+        # Save figures to files
+        for group_name, fig in figures.items():
+            # Create filename from group name
+            filename = f"static/{group_name.lower().replace(' ', '_')}.png"
+            fig.savefig(filename, dpi=300, bbox_inches="tight")
+            plt.close(fig)
         
         # Display each group in an expander
         for group_name, fig in figures.items():

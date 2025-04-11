@@ -274,10 +274,13 @@ class BalthazarVisualizer:
         
         return fig
         
-    def create_summary_dashboard(self):
+    def create_summary_dashboard(self, x_range=None):
         """
         Create a full dashboard with all metrics grouped by category.
         
+        Args:
+            x_range: Tuple of (start_week, end_week) for x-axis range. If None, uses all available weeks.
+            
         Returns:
             Dict of matplotlib Figure objects keyed by group name
         """
@@ -311,44 +314,52 @@ class BalthazarVisualizer:
         if any(cat in all_categories for cat in financial):
             figures["Financial Metrics"] = self.create_category_group_plots(
                 [cat for cat in financial if cat in all_categories],
-                "Financial Metrics"
+                "Financial Metrics",
+                x_range=x_range
             )
             
         if any(cat in all_categories for cat in productivity):
             figures["Productivity Metrics"] = self.create_category_group_plots(
                 [cat for cat in productivity if cat in all_categories],
-                "Productivity Metrics"
+                "Productivity Metrics",
+                x_range=x_range
             )
             
         if any(cat in all_categories for cat in content):
             figures["Content Metrics"] = self.create_category_group_plots(
                 [cat for cat in content if cat in all_categories],
-                "Content Metrics"
+                "Content Metrics",
+                x_range=x_range
             )
             
         if yt_stats:
             figures["YouTube Statistics"] = self.create_category_group_plots(
-                yt_stats, "YouTube Statistics"
+                yt_stats, "YouTube Statistics",
+                x_range=x_range
             )
             
         if website_stats:
             figures["Website Statistics"] = self.create_category_group_plots(
-                website_stats, "Website Statistics"
+                website_stats, "Website Statistics",
+                x_range=x_range
             )
             
         if email_stats:
             figures["Email Statistics"] = self.create_category_group_plots(
-                email_stats, "Email Statistics"
+                email_stats, "Email Statistics",
+                x_range=x_range
             )
             
         if customer_stats:
             figures["Customer Statistics"] = self.create_category_group_plots(
-                customer_stats, "Customer Statistics"
+                customer_stats, "Customer Statistics",
+                x_range=x_range
             )
             
         if other_stats:
             figures["Other Statistics"] = self.create_category_group_plots(
-                other_stats, "Other Statistics"
+                other_stats, "Other Statistics",
+                x_range=x_range
             )
             
         return figures 
