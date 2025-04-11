@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 from gsheet_connector import BalthazarGSheetConnector
 from dashboard_visualizer import BalthazarVisualizer
 from datetime import datetime, timedelta
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # Set page config
 st.set_page_config(
@@ -377,21 +379,149 @@ if 'data' in st.session_state:
             "Mål": st.session_state.settings['graph_settings']['goal_color'],
             "Utfall": st.session_state.settings['graph_settings']['outcome_color']
         }
-        visualizer.show_markers = st.session_state.settings['graph_settings']['show_markers']
-        visualizer.show_grid = st.session_state.settings['graph_settings']['show_grid']
-        visualizer.default_figsize = st.session_state.settings['graph_settings']['figsize']
         
-        # Use the selected display type
-        if plot_style == "Simple Line Charts":
-            # Create simple line charts using matplotlib
-            week_range = getattr(st.session_state, 'week_range', None)
-            figures = visualizer.create_summary_dashboard(x_range=week_range)
+        # Group categories
+        financial = ["Försäljning SEK eller högre", "Utgifter SEK eller lägre", "Resultat SEK"]
+        productivity = [
+            "Bokade möten", "Git commits", "Artiklar Hemsida (SEO)",
+            "Gratis verktyg hemsida (SEO)", "Skickade E-post", 
+            "Färdiga moment produktion"
+        ]
+        content = ["Långa YT videos", "Korta YT videos"]
+        
+        # Filter categories that exist in the data
+        data_categories = set(df["Category"].unique())
+        financial_filtered = [cat for cat in financial if cat in data_categories]
+        productivity_filtered = [cat for cat in productivity if cat in data_categories]
+        content_filtered = [cat for cat in content if cat in data_categories]
+        
+        # Get any other categories
+        other_categories = [cat for cat in data_categories if cat not in financial + productivity + content]
+        
+        # Get selected week range
+        week_range = getattr(st.session_state, 'week_range', None)
+        if week_range:
+            min_week, max_week = week_range
+        else:
+            min_week, max_week = 1, 52
             
-            # Display each group in an expander
-            for group_name, fig in figures.items():
+        if plot_style == "Simple Line Charts":
+            # Create simple charts for each category group
+            all_groups = [
+                ("Financial Metrics", financial_filtered),
+                ("Productivity Metrics", productivity_filtered),
+                ("Content Metrics", content_filtered)
+            ]
+            
+            if other_categories:
+                all_groups.append(("Other Metrics", other_categories))
+                
+            for group_name, categories in all_groups:
+                if not categories:
+                    continue
+                    
                 with st.expander(group_name, expanded=True):
-                    st.pyplot(fig)
-        
+                    for i, category in enumerate(categories):
+                        # Create a direct custom plot for each category
+                        cat_df = df[df["Category"] == category].copy()
+                        
+                        # Filter relevant data
+                        goals = cat_df[cat_df["Type"] == "Mål"].copy()
+                        goals = goals[(goals["Value"].notna()) & (goals["Value"] != 0)]
+                        
+                        outcomes = cat_df[cat_df["Type"] == "Utfall"].copy()
+                        outcomes = outcomes[(outcomes["Value"].notna()) & (outcomes["Value"] != 0)]
+                        
+                        # Get the weeks
+                        all_weeks = sorted(set(goals["Week"].tolist() + outcomes["Week"].tolist()))
+                        
+                        if all_weeks:
+                            # Filter for selected week range
+                            if week_range:
+                                goals = goals[(goals["Week"] >= min_week) & (goals["Week"] <= max_week)]
+                                outcomes = outcomes[(outcomes["Week"] >= min_week) & (outcomes["Week"] <= max_week)]
+                            
+                            # Create figure
+                            fig = go.Figure()
+                            
+                            # Add traces
+                            if not goals.empty:
+                                fig.add_trace(go.Scatter(
+                                    x=goals["Week"], y=goals["Value"],
+                                    mode='lines+markers',
+                                    name='Mål',
+                                    line=dict(color=visualizer.colors["Mål"], dash='dash'),
+                                    marker=dict(size=8)
+                                ))
+                                
+                            if not outcomes.empty:
+                                fig.add_trace(go.Scatter(
+                                    x=outcomes["Week"], y=outcomes["Value"],
+                                    mode='lines+markers',
+                                    name='Utfall',
+                                    line=dict(color=visualizer.colors["Utfall"]),
+                                    marker=dict(size=8)
+                                ))
+                                
+                            # Add values on points if requested
+                            if show_values:
+                                if not goals.empty:
+                                    for x, y in zip(goals["Week"], goals["Value"]):
+                                        fig.add_annotation(
+                                            x=x, y=y,
+                                            text=f"{y}",
+                                            showarrow=False,
+                                            yshift=10,
+                                            font=dict(color=visualizer.colors["Mål"]),
+                                            bgcolor="rgba(255,255,255,0.7)"
+                                        )
+                                
+                                if not outcomes.empty:
+                                    for x, y in zip(outcomes["Week"], outcomes["Value"]):
+                                        fig.add_annotation(
+                                            x=x, y=y,
+                                            text=f"{y}",
+                                            showarrow=False,
+                                            yshift=10,
+                                            font=dict(color=visualizer.colors["Utfall"]),
+                                            bgcolor="rgba(255,255,255,0.7)"
+                                        )
+                            
+                            # Check if this is a "lower is better" metric
+                            is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
+                            
+                            # Update layout
+                            fig.update_layout(
+                                title=f"{category}",
+                                xaxis_title="Week",
+                                yaxis_title="Value" if not is_lower_better else "Value (lower is better)",
+                                paper_bgcolor="#262730",
+                                plot_bgcolor="#262730",
+                                font=dict(color="white"),
+                                height=400,
+                                legend=dict(
+                                    font=dict(color="white"),
+                                    bgcolor="#262730"
+                                ),
+                                xaxis=dict(
+                                    gridcolor="#444", 
+                                    range=[min_week-0.5, max_week+0.5],
+                                    dtick=1,
+                                    tickmode="linear"
+                                ),
+                                yaxis=dict(
+                                    gridcolor="#444", 
+                                    autorange="reversed" if is_lower_better and invert_metrics else None,
+                                    zeroline=True,
+                                    zerolinecolor="#888",
+                                    zerolinewidth=1
+                                )
+                            )
+                            
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.warning(f"No data for {category}")
+                            
         elif plot_style == "Advanced Line Charts":
             # Create advanced line charts using plotly
             category_plots = visualizer.create_category_plots()
@@ -424,145 +554,156 @@ if 'data' in st.session_state:
                 "Mål": st.session_state.settings['graph_settings']['goal_color'],
                 "Utfall": st.session_state.settings['graph_settings']['outcome_color']
             }
-            visualizer.show_markers = st.session_state.settings['graph_settings']['show_markers']
-            visualizer.show_grid = st.session_state.settings['graph_settings']['show_grid']
-            visualizer.default_figsize = st.session_state.settings['graph_settings']['figsize']
-            
-            import plotly.graph_objects as go
-            from plotly.subplots import make_subplots
             
             # Get data for the selected category
-            visualizer.prepare_data()
             cat_df = df[df["Category"] == selected_category].copy()
             
             # Check if this is a "lower is better" metric
             is_lower_better = any(pattern in selected_category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
             
-            # Filter non-NA values
-            goals = cat_df[cat_df["Type"] == "Mål"].dropna(subset=["Value"])
-            outcomes = cat_df[cat_df["Type"] == "Utfall"].dropna(subset=["Value"])
+            # Filter data to remove empty or zero values
+            goals = cat_df[cat_df["Type"] == "Mål"].copy()
+            goals = goals[(goals["Value"].notna()) & (goals["Value"] != 0)]
             
-            # Create plot based on selected chart type
-            if chart_type == "Line Chart":
-                fig = go.Figure()
-                
-                if not goals.empty:
-                    fig.add_trace(go.Scatter(
-                        x=goals["Week"], y=goals["Value"],
-                        mode='lines+markers',
-                        name='Mål',
-                        line=dict(color=visualizer.colors["Mål"], dash='dash'),
-                        marker=dict(size=10)
-                    ))
-                    
-                if not outcomes.empty:
-                    fig.add_trace(go.Scatter(
-                        x=outcomes["Week"], y=outcomes["Value"],
-                        mode='lines+markers',
-                        name='Utfall',
-                        line=dict(color=visualizer.colors["Utfall"]),
-                        marker=dict(size=10)
-                    ))
-                    
-            elif chart_type == "Bar Chart":
-                fig = go.Figure()
-                
-                if not goals.empty:
-                    fig.add_trace(go.Bar(
-                        x=goals["Week"], y=goals["Value"],
-                        name='Mål',
-                        marker_color=visualizer.colors["Mål"]
-                    ))
-                    
-                if not outcomes.empty:
-                    fig.add_trace(go.Bar(
-                        x=outcomes["Week"], y=outcomes["Value"],
-                        name='Utfall',
-                        marker_color=visualizer.colors["Utfall"]
-                    ))
-                
-            elif chart_type == "Area Chart":
-                fig = go.Figure()
-                
-                if not goals.empty:
-                    fig.add_trace(go.Scatter(
-                        x=goals["Week"], y=goals["Value"],
-                        mode='lines',
-                        name='Mål',
-                        line=dict(color=visualizer.colors["Mål"]),
-                        fill='tozeroy'
-                    ))
-                    
-                if not outcomes.empty:
-                    fig.add_trace(go.Scatter(
-                        x=outcomes["Week"], y=outcomes["Value"],
-                        mode='lines',
-                        name='Utfall',
-                        line=dict(color=visualizer.colors["Utfall"]),
-                        fill='tozeroy'
-                    ))
-                
-            elif chart_type == "Combo Chart":
-                fig = go.Figure()
-                
-                if not goals.empty:
-                    fig.add_trace(go.Bar(
-                        x=goals["Week"], y=goals["Value"],
-                        name='Mål',
-                        marker_color=visualizer.colors["Mål"],
-                        opacity=0.7
-                    ))
-                    
-                if not outcomes.empty:
-                    fig.add_trace(go.Scatter(
-                        x=outcomes["Week"], y=outcomes["Value"],
-                        mode='lines+markers',
-                        name='Utfall',
-                        line=dict(color=visualizer.colors["Utfall"]),
-                        marker=dict(size=10)
-                    ))
+            outcomes = cat_df[cat_df["Type"] == "Utfall"].copy()
+            outcomes = outcomes[(outcomes["Value"].notna()) & (outcomes["Value"] != 0)]
             
-            # Add data labels if requested
-            if show_values:
-                if not goals.empty:
-                    for x, y in zip(goals["Week"], goals["Value"]):
-                        fig.add_annotation(
-                            x=x, y=y,
-                            text=f"{y}",
-                            showarrow=False,
-                            yshift=10,
-                            font=dict(color=visualizer.colors["Mål"]),
-                            bgcolor="rgba(255,255,255,0.7)"
-                        )
-                
-                if not outcomes.empty:
-                    for x, y in zip(outcomes["Week"], outcomes["Value"]):
-                        fig.add_annotation(
-                            x=x, y=y,
-                            text=f"{y}",
-                            showarrow=False,
-                            yshift=10,
-                            font=dict(color=visualizer.colors["Utfall"]),
-                            bgcolor="rgba(255,255,255,0.7)"
-                        )
+            # Get week range
+            all_weeks = sorted(set(goals["Week"].tolist() + outcomes["Week"].tolist()))
             
-            # Update layout
-            fig.update_layout(
-                title=f"{selected_category}: Mål vs. Utfall",
-                xaxis_title="Week",
-                yaxis_title="Value" if not is_lower_better else "Value (lower is better)",
-                paper_bgcolor="#262730",
-                plot_bgcolor="#262730",
-                font=dict(color="white"),
-                legend=dict(
+            if not all_weeks:
+                st.warning(f"No valid data found for {selected_category}")
+            else:
+                # Create plot based on selected chart type
+                fig = go.Figure()
+                
+                if chart_type == "Line Chart":
+                    if not goals.empty:
+                        fig.add_trace(go.Scatter(
+                            x=goals["Week"], y=goals["Value"],
+                            mode='lines+markers',
+                            name='Mål',
+                            line=dict(color=visualizer.colors["Mål"], dash='dash'),
+                            marker=dict(size=10)
+                        ))
+                        
+                    if not outcomes.empty:
+                        fig.add_trace(go.Scatter(
+                            x=outcomes["Week"], y=outcomes["Value"],
+                            mode='lines+markers',
+                            name='Utfall',
+                            line=dict(color=visualizer.colors["Utfall"]),
+                            marker=dict(size=10)
+                        ))
+                        
+                elif chart_type == "Bar Chart":
+                    if not goals.empty:
+                        fig.add_trace(go.Bar(
+                            x=goals["Week"], y=goals["Value"],
+                            name='Mål',
+                            marker_color=visualizer.colors["Mål"]
+                        ))
+                        
+                    if not outcomes.empty:
+                        fig.add_trace(go.Bar(
+                            x=outcomes["Week"], y=outcomes["Value"],
+                            name='Utfall',
+                            marker_color=visualizer.colors["Utfall"]
+                        ))
+                    
+                elif chart_type == "Area Chart":
+                    if not goals.empty:
+                        fig.add_trace(go.Scatter(
+                            x=goals["Week"], y=goals["Value"],
+                            mode='lines',
+                            name='Mål',
+                            line=dict(color=visualizer.colors["Mål"]),
+                            fill='tozeroy'
+                        ))
+                        
+                    if not outcomes.empty:
+                        fig.add_trace(go.Scatter(
+                            x=outcomes["Week"], y=outcomes["Value"],
+                            mode='lines',
+                            name='Utfall',
+                            line=dict(color=visualizer.colors["Utfall"]),
+                            fill='tozeroy'
+                        ))
+                    
+                elif chart_type == "Combo Chart":
+                    if not goals.empty:
+                        fig.add_trace(go.Bar(
+                            x=goals["Week"], y=goals["Value"],
+                            name='Mål',
+                            marker_color=visualizer.colors["Mål"],
+                            opacity=0.7
+                        ))
+                        
+                    if not outcomes.empty:
+                        fig.add_trace(go.Scatter(
+                            x=outcomes["Week"], y=outcomes["Value"],
+                            mode='lines+markers',
+                            name='Utfall',
+                            line=dict(color=visualizer.colors["Utfall"]),
+                            marker=dict(size=10)
+                        ))
+                
+                # Add data labels if requested
+                if show_values:
+                    if not goals.empty:
+                        for x, y in zip(goals["Week"], goals["Value"]):
+                            fig.add_annotation(
+                                x=x, y=y,
+                                text=f"{y}",
+                                showarrow=False,
+                                yshift=10,
+                                font=dict(color=visualizer.colors["Mål"]),
+                                bgcolor="rgba(255,255,255,0.7)"
+                            )
+                    
+                    if not outcomes.empty:
+                        for x, y in zip(outcomes["Week"], outcomes["Value"]):
+                            fig.add_annotation(
+                                x=x, y=y,
+                                text=f"{y}",
+                                showarrow=False,
+                                yshift=10,
+                                font=dict(color=visualizer.colors["Utfall"]),
+                                bgcolor="rgba(255,255,255,0.7)"
+                            )
+                
+                # Find min and max for weeks to properly set the x-axis range
+                min_week = min(all_weeks) if all_weeks else 1
+                max_week = max(all_weeks) if all_weeks else 52
+                
+                # Update layout
+                fig.update_layout(
+                    title=f"{selected_category}: Mål vs. Utfall",
+                    xaxis_title="Week",
+                    yaxis_title="Value" if not is_lower_better else "Value (lower is better)",
+                    paper_bgcolor="#262730",
+                    plot_bgcolor="#262730",
                     font=dict(color="white"),
-                    bgcolor="#262730"
-                ),
-                xaxis=dict(gridcolor="#444"),
-                yaxis=dict(gridcolor="#444", autorange="reversed" if is_lower_better and invert_metrics else None)
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
+                    legend=dict(
+                        font=dict(color="white"),
+                        bgcolor="#262730"
+                    ),
+                    xaxis=dict(
+                        gridcolor="#444", 
+                        range=[min_week-0.5, max_week+0.5],
+                        dtick=1,  # Show every integer tick
+                        tickmode="linear"
+                    ),
+                    yaxis=dict(
+                        gridcolor="#444", 
+                        autorange="reversed" if is_lower_better and invert_metrics else None,
+                        zeroline=True,
+                        zerolinecolor="#888",
+                        zerolinewidth=1
+                    )
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Select a specific category from the sidebar to see detailed metrics.")
     
