@@ -552,10 +552,8 @@ if 'data' in st.session_state and st.session_state.data is not None:
                             outcomes = cat_df[cat_df["Type"] == "Utfall"].copy()
                             outcomes = outcomes[(outcomes["Value"].notna()) & (outcomes["Week"].notna())]
                             
-                            # Show debug info in a collapsible section
-                            with st.expander(f"Debug info for {category}", expanded=False):
-                                st.write(f"- Mål data points: {len(goals)}")
-                                st.write(f"- Utfall data points: {len(outcomes)}")
+                            # Show debug info directly (not in an expander to avoid nesting)
+                            st.caption(f"**Debug info:** Mål: {len(goals)} points, Utfall: {len(outcomes)} points")
                             
                             # Convert to native Python types to avoid PyArrow conversion issues
                             if not goals.empty:
