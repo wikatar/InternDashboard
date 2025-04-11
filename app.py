@@ -352,6 +352,12 @@ if 'data' in st.session_state and st.session_state.data is not None:
     if missing_columns:
         st.error(f"Data is missing required columns: {', '.join(missing_columns)}")
     else:
+        # Debug data before conversion
+        st.write("### Debug: Data Summary Before Processing")
+        st.write(f"Data shape: {df.shape}")
+        st.write(f"Data types: {df.dtypes}")
+        st.write(f"Sample data:\n{df.head(3)}")
+        
         # Convert the data to numeric where appropriate
         df["Value"] = pd.to_numeric(df["Value"], errors="coerce")
         df["Date"] = pd.to_numeric(df["Date"], errors="coerce")
@@ -360,18 +366,33 @@ if 'data' in st.session_state and st.session_state.data is not None:
         if "Week" not in df.columns:
             df["Week"] = df["Date"]
         
+        # Set Week column to int type for proper display
+        df["Week"] = df["Week"].astype(int)
+        
         # Drop any rows with NaN values
         orig_len = len(df)
         df = df.dropna(subset=["Value", "Date"])
         if len(df) < orig_len:
             st.warning(f"Dropped {orig_len - len(df)} rows with invalid values.")
+            
+        # Debug data after conversion    
+        st.write("### Debug: Data Summary After Processing")
+        st.write(f"Data shape: {df.shape}")
+        st.write(f"Columns: {df.columns.tolist()}")
+        st.write(f"Week values: {sorted(df['Week'].unique())}")
+        st.write(f"Categories: {sorted(df['Category'].unique())}")
+        st.write(f"Types: {sorted(df['Type'].unique())}")
+        
+        # Explicitly update the data in session state with processed version
+        st.session_state.data = df.copy()
         
         # Summary metrics in columns
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-            st.metric("Total Categories", len(df["Category"].unique()))
+            total_categories = len(df["Category"].unique())
+            st.metric("Total Categories", total_categories)
             st.markdown('</div>', unsafe_allow_html=True)
         
         with col2:
@@ -379,18 +400,29 @@ if 'data' in st.session_state and st.session_state.data is not None:
             total_goals = len(df[df["Type"] == "Mål"])
             st.metric("Total Goals", total_goals)
             st.markdown('</div>', unsafe_allow_html=True)
+            
+        # Add clear debugging information
+        st.subheader("Visualization Debug Information")
+        st.write("Data sample:")
+        st.dataframe(df.head(10))
         
-        with col3:
-            st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-            total_outcomes = len(df[df["Type"] == "Utfall"])
-            st.metric("Total Outcomes", total_outcomes)
-            st.markdown('</div>', unsafe_allow_html=True)
+        # Check data types - sometimes visualizations fail due to type issues
+        st.write("Data types:")
+        st.write(df.dtypes)
         
-        with col4:
-            st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-            days = df["Date"].nunique()
-            st.metric("Days/Weeks Tracked", days)
-            st.markdown('</div>', unsafe_allow_html=True)
+        # Check if there are any visualizations
+        st.write("Creating visualizer with data...")
+        visualizer = BalthazarVisualizer(df)
+        
+        # Output category information
+        st.write(f"Detected metrics: {visualizer.metrics}")
+        st.write(f"Detected categories: {visualizer.categories}")
+        
+        # Try to create a test plot for the first category if available
+        if visualizer.categories:
+            st.write(f"Attempting to create plot for {visualizer.categories[0]}...")
+            test_fig = visualizer.create_metric_comparison(visualizer.categories[0])
+            st.pyplot(test_fig)
         
         st.markdown("---")
         
@@ -464,49 +496,73 @@ if 'data' in st.session_state and st.session_state.data is not None:
                         
                     with st.expander(group_name, expanded=True):
                         for i, category in enumerate(categories):
-                            # Create a direct custom plot for each category
+                            # Create a direct custom plot for each category - IMPROVED CODE
                             cat_df = df[df["Category"] == category].copy()
                             
+                            # Skip if no data
+                            if cat_df.empty:
+                                st.warning(f"No data found for category: {category}")
+                                continue
+                                
                             # Ensure this subset has Week column
                             if "Week" not in cat_df.columns and "Date" in cat_df.columns:
                                 cat_df["Week"] = cat_df["Date"]
                             
-                            # Filter relevant data
+                            # Convert to numeric if needed
+                            cat_df["Value"] = pd.to_numeric(cat_df["Value"], errors="coerce")
+                            cat_df["Week"] = pd.to_numeric(cat_df["Week"], errors="coerce")
+                            
+                            # Filter relevant data - make sure to only use rows with valid data
                             goals = cat_df[cat_df["Type"] == "Mål"].copy()
-                            goals = goals[(goals["Value"].notna()) & (goals["Value"] != 0)]
+                            goals = goals[(goals["Value"].notna()) & (goals["Week"].notna())]
                             
                             outcomes = cat_df[cat_df["Type"] == "Utfall"].copy()
-                            outcomes = outcomes[(outcomes["Value"].notna()) & (outcomes["Value"] != 0)]
+                            outcomes = outcomes[(outcomes["Value"].notna()) & (outcomes["Week"].notna())]
+                            
+                            # Debug info
+                            st.write(f"**Debug info for {category}:**")
+                            st.write(f"- Mål data points: {len(goals)}")
+                            st.write(f"- Utfall data points: {len(outcomes)}")
                             
                             # Get the weeks
-                            all_weeks = sorted(set(goals["Week"].tolist() + outcomes["Week"].tolist()))
+                            goal_weeks = goals["Week"].tolist() if not goals.empty else []
+                            outcome_weeks = outcomes["Week"].tolist() if not outcomes.empty else []
+                            all_weeks = sorted(set(goal_weeks + outcome_weeks))
                             
                             if all_weeks:
                                 # Filter for selected week range
                                 if week_range:
+                                    min_week, max_week = week_range
                                     goals = goals[(goals["Week"] >= min_week) & (goals["Week"] <= max_week)]
                                     outcomes = outcomes[(outcomes["Week"] >= min_week) & (outcomes["Week"] <= max_week)]
+                                else:
+                                    # Default to the weeks available in the data
+                                    min_week = min(all_weeks)
+                                    max_week = max(all_weeks)
                                 
                                 # Create figure
                                 fig = go.Figure()
                                 
-                                # Add traces
+                                # Add goal trace (if we have data)
                                 if not goals.empty:
                                     fig.add_trace(go.Scatter(
-                                        x=goals["Week"], y=goals["Value"],
+                                        x=goals["Week"], 
+                                        y=goals["Value"],
                                         mode='lines+markers',
                                         name='Mål',
-                                        line=dict(color=visualizer.colors["Mål"], dash='dash'),
-                                        marker=dict(size=8)
+                                        line=dict(color="#00BFFF", dash='dash', width=3),
+                                        marker=dict(size=10, symbol="circle")
                                     ))
                                     
+                                # Add outcome trace (if we have data)
                                 if not outcomes.empty:
                                     fig.add_trace(go.Scatter(
-                                        x=outcomes["Week"], y=outcomes["Value"],
+                                        x=outcomes["Week"], 
+                                        y=outcomes["Value"],
                                         mode='lines+markers',
                                         name='Utfall',
-                                        line=dict(color=visualizer.colors["Utfall"]),
-                                        marker=dict(size=8)
+                                        line=dict(color="#FF4B4B", width=3),
+                                        marker=dict(size=10, symbol="circle")
                                     ))
                                     
                                 # Add values on points if requested
@@ -515,22 +571,28 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                         for x, y in zip(goals["Week"], goals["Value"]):
                                             fig.add_annotation(
                                                 x=x, y=y,
-                                                text=f"{y}",
+                                                text=f"{y:.0f}",
                                                 showarrow=False,
-                                                yshift=10,
-                                                font=dict(color=visualizer.colors["Mål"]),
-                                                bgcolor="rgba(255,255,255,0.7)"
+                                                yshift=15,
+                                                font=dict(color="#00BFFF", size=14),
+                                                bgcolor="rgba(0,0,0,0.5)",
+                                                bordercolor="#00BFFF",
+                                                borderwidth=1,
+                                                borderpad=3
                                             )
                                     
                                     if not outcomes.empty:
                                         for x, y in zip(outcomes["Week"], outcomes["Value"]):
                                             fig.add_annotation(
                                                 x=x, y=y,
-                                                text=f"{y}",
+                                                text=f"{y:.0f}",
                                                 showarrow=False,
-                                                yshift=10,
-                                                font=dict(color=visualizer.colors["Utfall"]),
-                                                bgcolor="rgba(255,255,255,0.7)"
+                                                yshift=15,
+                                                font=dict(color="#FF4B4B", size=14),
+                                                bgcolor="rgba(0,0,0,0.5)",
+                                                bordercolor="#FF4B4B",
+                                                borderwidth=1,
+                                                borderpad=3
                                             )
                                 
                                 # Check if this is a "lower is better" metric
@@ -543,7 +605,7 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                     yaxis_title="Value" if not is_lower_better else "Value (lower is better)",
                                     paper_bgcolor="#262730",
                                     plot_bgcolor="#262730",
-                                    font=dict(color="white"),
+                                    font=dict(color="white", size=14),
                                     height=400,
                                     legend=dict(
                                         font=dict(color="white"),
@@ -553,21 +615,23 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                         gridcolor="#444", 
                                         range=[min_week-0.5, max_week+0.5],
                                         dtick=1,
-                                        tickmode="linear"
+                                        tickmode="linear",
+                                        title_font=dict(size=14)
                                     ),
                                     yaxis=dict(
                                         gridcolor="#444", 
                                         autorange="reversed" if is_lower_better and invert_metrics else None,
                                         zeroline=True,
                                         zerolinecolor="#888",
-                                        zerolinewidth=1
+                                        zerolinewidth=1,
+                                        title_font=dict(size=14)
                                     )
                                 )
                                 
                                 st.plotly_chart(fig, use_container_width=True)
                             else:
-                                st.warning(f"No data for {category}")
-                                
+                                st.warning(f"No numeric data for {category}")
+            
             elif plot_style == "Advanced Line Charts":
                 # Create advanced line charts using plotly
                 category_plots = visualizer.create_category_plots()

@@ -41,7 +41,9 @@ class BalthazarVisualizer:
             'legend.facecolor': '#262730',
             'legend.edgecolor': '#666666',
             'legend.fontsize': 10,
-            'legend.title_fontsize': 12
+            'legend.title_fontsize': 12,
+            'figure.dpi': 100,  # Higher DPI for better rendering
+            'savefig.dpi': 100  # Save figures at higher DPI
         })
         
     def _get_metrics(self):
@@ -80,6 +82,7 @@ class BalthazarVisualizer:
         
         # Only include categories that exist in the data
         data_categories = set(self.data["Category"].unique())
+        print(f"Available categories in data: {data_categories}")
         
         for category in financial + productivity + content:
             if category in data_categories:
@@ -102,6 +105,11 @@ class BalthazarVisualizer:
             # Get column names for debugging
             print(f"Available columns: {self.data.columns.tolist()}")
             
+            # Debug data before preparation
+            print(f"Data shape before preparation: {self.data.shape}")
+            print(f"Data types before preparation: {self.data.dtypes}")
+            print(f"First 3 rows before preparation: {self.data.head(3)}")
+            
             # Ensure Date is an integer
             if "Date" not in self.data.columns:
                 print("Warning: 'Date' column not found in data.")
@@ -113,6 +121,9 @@ class BalthazarVisualizer:
             # Just ensure it's called "Week" for consistency in the rest of the code
             self.data["Week"] = self.data["Date"]
             
+            # Convert Value to numeric to ensure plotting works
+            self.data["Value"] = pd.to_numeric(self.data["Value"], errors="coerce")
+            
             # Sort by Week and Type to ensure consistent plotting
             if "Type" in self.data.columns:
                 self.data = self.data.sort_values(["Week", "Type"])
@@ -123,6 +134,9 @@ class BalthazarVisualizer:
             # Drop any rows with NaN week values
             self.data = self.data.dropna(subset=["Week"])
             
+            # Drop any rows with NaN value values (can't plot without values)
+            self.data = self.data.dropna(subset=["Value"])
+            
             # Print data summary for debugging
             print(f"Prepared data with {len(self.data)} rows")
             print(f"Week values: {sorted(self.data['Week'].unique())}")
@@ -130,6 +144,11 @@ class BalthazarVisualizer:
                 print(f"Categories: {sorted(self.data['Category'].unique())}")
             if "Type" in self.data.columns:
                 print(f"Types: {sorted(self.data['Type'].unique())}")
+                
+            # Debug data after preparation  
+            print(f"Data shape after preparation: {self.data.shape}")
+            print(f"Data types after preparation: {self.data.dtypes}")
+            print(f"First 3 rows after preparation: {self.data.head(3)}")
         except Exception as e:
             print(f"Error preparing data: {str(e)}")
             import traceback
@@ -152,106 +171,126 @@ class BalthazarVisualizer:
         if figsize is None:
             figsize = self.default_figsize
             
-        fig, ax = plt.subplots(figsize=figsize)
+        # Create a new figure with higher DPI
+        fig = plt.figure(figsize=figsize, dpi=100)
+        ax = fig.add_subplot(111)
         
         # Filter data for the given category
-        cat_df = self.data[self.data["Category"] == category].copy()
-        
-        if cat_df.empty:
-            ax.text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
-            return fig
+        try:
+            cat_df = self.data[self.data["Category"] == category].copy()
+            print(f"Filtering for category: {category}")
+            print(f"Found {len(cat_df)} rows for this category")
+            print(f"Category data sample: {cat_df.head(3)}")
             
-        # Get all weeks in the data
-        all_weeks = sorted(cat_df["Week"].unique())
-        
-        # Set x-axis range if specified
-        if x_range and len(x_range) == 2:
-            start_week, end_week = x_range
-            # Generate a complete list of weeks in the range
-            weeks = list(range(start_week, end_week + 1))
-            # Filter data to only include weeks in the range
-            cat_df = cat_df[(cat_df["Week"] >= start_week) & (cat_df["Week"] <= end_week)]
-        else:
-            # Use all available weeks
-            min_week = int(cat_df["Week"].min())
-            max_week = int(cat_df["Week"].max())
-            weeks = list(range(min_week, max_week + 1))
-        
-        # Check if this is a "lower is better" metric
-        is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
-        
-        # Filter non-NA values for goals
-        goal_df = cat_df[cat_df["Type"] == "Mål"].dropna(subset=["Value"])
-        # Filter non-NA values for outcomes
-        outcome_df = cat_df[cat_df["Type"] == "Utfall"].dropna(subset=["Value"])
-        
-        # Plot goals (dotted line)
-        if not goal_df.empty:
-            ax.plot(
-                goal_df["Week"],
-                goal_df["Value"],
-                color=self.colors["Mål"],
-                linestyle=":",
-                marker="o" if self.show_markers else None,
-                label="Mål",
-                drawstyle='steps-post'  # Use steps-post to avoid ghosting
-            )
+            if cat_df.empty:
+                print(f"No data for category: {category}")
+                ax.text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
+                return fig
+                
+            # Get all weeks in the data
+            all_weeks = sorted(cat_df["Week"].unique())
+            print(f"Weeks for this category: {all_weeks}")
             
-        # Plot outcomes (solid line)
-        if not outcome_df.empty:
-            ax.plot(
-                outcome_df["Week"],
-                outcome_df["Value"],
-                color=self.colors["Utfall"],
-                linestyle="-",
-                marker="o" if self.show_markers else None,
-                label="Utfall",
-                drawstyle='steps-post'  # Use steps-post to avoid ghosting
-            )
-        
-        # Set plot title and labels
-        ax.set_title(f"{category}: Mål vs. Utfall", color="#FFFFFF", fontsize=14)
-        ax.set_xlabel("Week", color="#FAFAFA")
-        
-        # If it's a "lower is better" metric, invert the y-axis
-        if is_lower_better:
-            ax.invert_yaxis()
-            # Set y-axis label to indicate inversion
-            ax.set_ylabel("Value (lower is better)", color="#FAFAFA")
-        else:
-            ax.set_ylabel("Value", color="#FAFAFA")
+            # Set x-axis range if specified
+            if x_range and len(x_range) == 2:
+                start_week, end_week = x_range
+                # Generate a complete list of weeks in the range
+                weeks = list(range(start_week, end_week + 1))
+                # Filter data to only include weeks in the range
+                cat_df = cat_df[(cat_df["Week"] >= start_week) & (cat_df["Week"] <= end_week)]
+            else:
+                # Use all available weeks
+                min_week = int(cat_df["Week"].min())
+                max_week = int(cat_df["Week"].max())
+                weeks = list(range(min_week, max_week + 1))
             
-        # Format x-axis to only show the weeks that are available
-        if weeks:
-            ax.set_xticks(weeks)
-            ax.set_xticklabels([f"Week {w}" for w in weeks])
+            # Check if this is a "lower is better" metric
+            is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
             
-            # Set x-axis limits to ensure all weeks are shown
-            ax.set_xlim(min(weeks) - 0.5, max(weeks) + 0.5)
+            # Filter non-NA values for goals
+            goal_df = cat_df[cat_df["Type"] == "Mål"].dropna(subset=["Value"])
+            print(f"Goal data: {len(goal_df)} rows")
+            print(f"Goal data sample: {goal_df.head(3)}")
             
-        # Add data point annotations
-        for df, label in [(goal_df, "Mål"), (outcome_df, "Utfall")]:
-            if not df.empty:
-                for x, y in zip(df["Week"], df["Value"]):
-                    ax.annotate(
-                        f"{y:.0f}",
-                        (x, y),
-                        textcoords="offset points",
-                        xytext=(0, 10),
-                        ha='center',
-                        color=self.colors[label],
-                        fontweight='bold'
-                    )
+            # Filter non-NA values for outcomes
+            outcome_df = cat_df[cat_df["Type"] == "Utfall"].dropna(subset=["Value"])
+            print(f"Outcome data: {len(outcome_df)} rows")
+            print(f"Outcome data sample: {outcome_df.head(3)}")
             
-        # Add legend
-        ax.legend(title="", frameon=True, facecolor="#262730", edgecolor="#666666")
-        
-        # Add grid if enabled
-        if self.show_grid:
-            ax.grid(True, linestyle="--", alpha=0.7, color="#444444")
-        
-        # Tight layout
-        fig.tight_layout()
+            # Plot goals (dotted line)
+            if not goal_df.empty:
+                print(f"Plotting goals: {goal_df['Week'].tolist()}, {goal_df['Value'].tolist()}")
+                ax.plot(
+                    goal_df["Week"],
+                    goal_df["Value"],
+                    color=self.colors["Mål"],
+                    linestyle=":",
+                    marker="o" if self.show_markers else None,
+                    label="Mål"
+                )
+                
+            # Plot outcomes (solid line)
+            if not outcome_df.empty:
+                print(f"Plotting outcomes: {outcome_df['Week'].tolist()}, {outcome_df['Value'].tolist()}")
+                ax.plot(
+                    outcome_df["Week"],
+                    outcome_df["Value"],
+                    color=self.colors["Utfall"],
+                    linestyle="-",
+                    marker="o" if self.show_markers else None,
+                    label="Utfall"
+                )
+            
+            # Set plot title and labels
+            ax.set_title(f"{category}: Mål vs. Utfall", color="#FFFFFF", fontsize=14)
+            ax.set_xlabel("Week", color="#FAFAFA")
+            
+            # If it's a "lower is better" metric, invert the y-axis
+            if is_lower_better:
+                ax.invert_yaxis()
+                # Set y-axis label to indicate inversion
+                ax.set_ylabel("Value (lower is better)", color="#FAFAFA")
+            else:
+                ax.set_ylabel("Value", color="#FAFAFA")
+                
+            # Format x-axis to only show the weeks that are available
+            if weeks:
+                ax.set_xticks(weeks)
+                ax.set_xticklabels([f"Week {w}" for w in weeks])
+                
+                # Set x-axis limits to ensure all weeks are shown
+                ax.set_xlim(min(weeks) - 0.5, max(weeks) + 0.5)
+                
+            # Add data point annotations
+            for df, label in [(goal_df, "Mål"), (outcome_df, "Utfall")]:
+                if not df.empty:
+                    for x, y in zip(df["Week"], df["Value"]):
+                        ax.annotate(
+                            f"{y:.0f}",
+                            (x, y),
+                            textcoords="offset points",
+                            xytext=(0, 10),
+                            ha='center',
+                            color=self.colors[label],
+                            fontweight='bold'
+                        )
+            
+            # Add legend
+            ax.legend(title="", frameon=True, facecolor="#262730", edgecolor="#666666")
+            
+            # Add grid if enabled
+            if self.show_grid:
+                ax.grid(True, linestyle="--", alpha=0.7, color="#444444")
+            
+            # Tight layout
+            fig.tight_layout()
+            print("Plot created successfully")
+            
+        except Exception as e:
+            print(f"Error creating metric comparison plot: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            ax.text(0.5, 0.5, f"Error creating plot: {str(e)}", ha="center", va="center", color="red")
         
         return fig
         
