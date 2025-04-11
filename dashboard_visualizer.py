@@ -59,6 +59,12 @@ class BalthazarVisualizer:
         # Sort by Week and Type to ensure consistent plotting
         self.df = self.df.sort_values(["Week", "Type"])
         
+        # Handle "lower is better" metrics by inverting their values
+        lower_better_patterns = ["lägre", "mindre", "lower"]
+        for pattern in lower_better_patterns:
+            mask = self.df["Category"].str.contains(pattern, case=False, na=False)
+            self.df.loc[mask, "Value"] = -self.df.loc[mask, "Value"]
+            
     def create_metric_comparison(self, category, figsize=None, x_range=None):
         """
         Create a comparison plot of goals vs. outcomes for a specific category.
@@ -100,13 +106,20 @@ class BalthazarVisualizer:
         # Plot goals first (dotted line)
         goal_df = cat_df[cat_df["Type"] == "Mål"]
         if not goal_df.empty:
-            # Ensure we have data points for all weeks
+            # Create a DataFrame with all weeks
             goal_data = pd.DataFrame({"Week": weeks})
             goal_data = goal_data.merge(goal_df[["Week", "Value"]], on="Week", how="left")
-            goal_data["Value"] = goal_data["Value"].fillna(method="ffill").fillna(method="bfill")
+            
+            # Forward fill missing values, but only within the actual data range
+            first_valid_week = goal_df["Week"].min()
+            last_valid_week = goal_df["Week"].max()
+            
+            # Only fill values between first and last valid weeks
+            mask = (goal_data["Week"] >= first_valid_week) & (goal_data["Week"] <= last_valid_week)
+            goal_data.loc[mask, "Value"] = goal_data.loc[mask, "Value"].fillna(method="ffill")
             
             sns.lineplot(
-                data=goal_data,
+                data=goal_data[goal_data["Value"].notna()],  # Only plot where we have values
                 x="Week",
                 y="Value",
                 color=self.colors["Mål"],
@@ -120,12 +133,13 @@ class BalthazarVisualizer:
         # Plot outcomes second (solid line)
         outcome_df = cat_df[cat_df["Type"] == "Utfall"]
         if not outcome_df.empty:
-            # Ensure we have data points for all weeks
+            # Create a DataFrame with all weeks
             outcome_data = pd.DataFrame({"Week": weeks})
             outcome_data = outcome_data.merge(outcome_df[["Week", "Value"]], on="Week", how="left")
             
+            # Don't fill missing values for outcomes
             sns.lineplot(
-                data=outcome_data,
+                data=outcome_data[outcome_data["Value"].notna()],  # Only plot where we have values
                 x="Week",
                 y="Value",
                 color=self.colors["Utfall"],
@@ -145,6 +159,13 @@ class BalthazarVisualizer:
         ax.set_xticks(weeks)
         ax.set_xticklabels([f"Week {w}" for w in weeks])
         
+        # Check if this is a "lower is better" metric
+        is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower"])
+        
+        # If it's a "lower is better" metric, invert the y-axis
+        if is_lower_better:
+            ax.invert_yaxis()
+            
         # Add legend
         ax.legend(title="", frameon=True, facecolor="#262730", edgecolor="#666666")
         
