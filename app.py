@@ -4,6 +4,7 @@ import os
 import matplotlib.pyplot as plt
 from gsheet_connector import BalthazarGSheetConnector
 from dashboard_visualizer import BalthazarVisualizer
+from datetime import datetime, timedelta
 
 # Set page config
 st.set_page_config(
@@ -26,6 +27,34 @@ if 'settings' not in st.session_state:
             'outcome_color': '#FF4B4B'
         }
     }
+
+# Initialize visualizer for storage access
+if 'visualizer' not in st.session_state:
+    st.session_state.visualizer = BalthazarVisualizer(None)
+    
+# Load saved configuration if exists
+if st.session_state.visualizer.has_config():
+    saved_config = st.session_state.visualizer.load_config()
+    if saved_config:
+        # Update settings from saved config
+        if 'sheet_name' in saved_config:
+            st.session_state.settings['sheet_name'] = saved_config['sheet_name']
+        if 'worksheet_name' in saved_config:
+            st.session_state.settings['worksheet_name'] = saved_config['worksheet_name']
+        if 'data_range' in saved_config:
+            st.session_state.settings['data_range'] = saved_config['data_range']
+        if 'credentials_json' in saved_config:
+            st.session_state.credentials_json = saved_config['credentials_json']
+            # Save credentials to file for use
+            with open("temp_credentials.json", "w") as f:
+                f.write(saved_config['credentials_json'])
+
+# Try to load saved data if exists
+if 'data' not in st.session_state and st.session_state.visualizer.has_browser_data():
+    data, date_range = st.session_state.visualizer.load_from_browser()
+    if data is not None:
+        st.session_state.data = data
+        st.session_state.date_range = date_range
 
 # Custom CSS for dark mode enhancements
 st.markdown("""
@@ -85,6 +114,21 @@ with st.sidebar:
         help="Service account credentials for Google Sheets API"
     )
     
+    # Credentials text area as an alternative
+    if 'credentials_json' in st.session_state:
+        credentials_json = st.text_area(
+            "Or paste credentials JSON here",
+            value=st.session_state.credentials_json,
+            height=100,
+            help="Paste your Google Service Account credentials JSON"
+        )
+    else:
+        credentials_json = st.text_area(
+            "Or paste credentials JSON here",
+            height=100,
+            help="Paste your Google Service Account credentials JSON"
+        )
+    
     # Sheet name input with persistent value
     sheet_name = st.text_input(
         "Google Sheet name", 
@@ -106,8 +150,41 @@ with st.sidebar:
         help="Range of cells to fetch (e.g., A1:Z100)"
     )
     
+    # Save configuration button
+    if st.button("Save Configuration"):
+        config = {
+            'sheet_name': sheet_name,
+            'worksheet_name': worksheet_name,
+            'data_range': data_range,
+        }
+        
+        if credentials_json:
+            config['credentials_json'] = credentials_json
+            
+        success = st.session_state.visualizer.save_config(config)
+        if success:
+            st.success("Configuration saved!")
+            # Update session state
+            st.session_state.settings['sheet_name'] = sheet_name
+            st.session_state.settings['worksheet_name'] = worksheet_name
+            st.session_state.settings['data_range'] = data_range
+            if credentials_json:
+                st.session_state.credentials_json = credentials_json
+        else:
+            st.error("Failed to save configuration.")
+    
     # Fetch data button
     fetch_button = st.button("Fetch Data", type="primary")
+    
+    # Clear saved data button
+    if st.session_state.visualizer.has_browser_data():
+        if st.button("Clear Saved Data"):
+            success = st.session_state.visualizer.clear_browser_data()
+            if success and 'data' in st.session_state:
+                del st.session_state.data
+                st.success("Saved data cleared!")
+            else:
+                st.error("Failed to clear saved data.")
     
     st.markdown("---")
     st.markdown("### Week Range Selection")
@@ -172,20 +249,19 @@ with st.sidebar:
             ["All Categories"] + all_categories
         )
 
-# Save settings when inputs change
-if sheet_name != st.session_state.settings['sheet_name']:
-    st.session_state.settings['sheet_name'] = sheet_name
-if worksheet_name != st.session_state.settings['worksheet_name']:
-    st.session_state.settings['worksheet_name'] = worksheet_name
-if data_range != st.session_state.settings['data_range']:
-    st.session_state.settings['data_range'] = data_range
-
 # Main content
-if uploaded_creds is not None and fetch_button:
+if (uploaded_creds is not None or credentials_json) and fetch_button:
     # Save the credentials temporarily
     temp_cred_path = "temp_credentials.json"
-    with open(temp_cred_path, "wb") as f:
-        f.write(uploaded_creds.getvalue())
+    
+    if uploaded_creds is not None:
+        with open(temp_cred_path, "wb") as f:
+            f.write(uploaded_creds.getvalue())
+    elif credentials_json:
+        with open(temp_cred_path, "w") as f:
+            f.write(credentials_json)
+            # Update session state
+            st.session_state.credentials_json = credentials_json
     
     try:
         # Status message
@@ -206,7 +282,29 @@ if uploaded_creds is not None and fetch_button:
                 st.session_state.data = processed_data
                 st.session_state.raw_data = raw_data
                 
-                status.update(label="✅ Data fetched successfully!", state="complete")
+                # Save the configuration
+                config = {
+                    'sheet_name': sheet_name,
+                    'worksheet_name': worksheet_name,
+                    'data_range': data_range,
+                }
+                if credentials_json:
+                    config['credentials_json'] = credentials_json
+                
+                st.session_state.visualizer = BalthazarVisualizer(processed_data)
+                
+                # Save data to persistent storage
+                date_range = (
+                    datetime.now().strftime("%Y-%m-%d"), 
+                    (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d")
+                )
+                save_success = st.session_state.visualizer.save_to_browser(date_range)
+                config_success = st.session_state.visualizer.save_config(config)
+                
+                if save_success and config_success:
+                    status.update(label="✅ Data fetched and saved successfully!", state="complete")
+                else:
+                    status.update(label="⚠️ Data fetched but couldn't be saved completely", state="warning")
             else:
                 status.update(label="❌ No data found or processing error", state="error")
         else:
@@ -217,7 +315,7 @@ if uploaded_creds is not None and fetch_button:
     
     finally:
         # Clean up temporary credentials file
-        if os.path.exists(temp_cred_path):
+        if os.path.exists(temp_cred_path) and temp_cred_path != "temp_credentials.json":
             os.remove(temp_cred_path)
 
 # Display dashboard if data is available

@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+import os
 from google_sheets_connector import GoogleSheetsConnector
 from dashboard_visualizer import BalthazarVisualizer
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.express as px
-import json
 
 def main():
     st.set_page_config(
@@ -22,19 +22,15 @@ def main():
     if 'date_range' not in st.session_state:
         st.session_state.date_range = None
     if 'visualizer' not in st.session_state:
-        st.session_state.visualizer = None
+        st.session_state.visualizer = BalthazarVisualizer(None)
     if 'config' not in st.session_state:
         st.session_state.config = None
         
-    # Initialize visualizer for storage access
-    if st.session_state.visualizer is None:
-        st.session_state.visualizer = BalthazarVisualizer(None)
-        
-    # Load saved configuration if exists
+    # Try to load saved configuration if exists
     if st.session_state.config is None and st.session_state.visualizer.has_config():
         st.session_state.config = st.session_state.visualizer.load_config()
         
-    # Sidebar for date range selection
+    # Sidebar for configuration
     with st.sidebar:
         st.title("Dashboard Controls")
         
@@ -55,8 +51,9 @@ def main():
         
         if st.session_state.config:
             try:
-                default_start = datetime.strptime(st.session_state.config["date_range"][0], "%Y-%m-%d")
-                default_end = datetime.strptime(st.session_state.config["date_range"][1], "%Y-%m-%d")
+                if isinstance(st.session_state.config.get("date_range", ["", ""])[0], str):
+                    default_start = datetime.strptime(st.session_state.config["date_range"][0], "%Y-%m-%d")
+                    default_end = datetime.strptime(st.session_state.config["date_range"][1], "%Y-%m-%d")
             except:
                 pass
                 
@@ -85,16 +82,34 @@ def main():
                 ],
                 "auto_fetch": auto_fetch
             }
-            st.session_state.visualizer.save_config(config)
-            st.session_state.config = config
-            st.success("Configuration saved!")
-            
+            success = st.session_state.visualizer.save_config(config)
+            if success:
+                st.session_state.config = config
+                st.success("Configuration saved!")
+            else:
+                st.error("Failed to save configuration.")
+        
         # Clear configuration button
         if st.button("Clear Configuration"):
-            st.session_state.visualizer.clear_config()
-            st.session_state.config = None
-            st.success("Configuration cleared!")
-            
+            success = st.session_state.visualizer.clear_config()
+            if success:
+                st.session_state.config = None
+                st.success("Configuration cleared!")
+            else:
+                st.error("Failed to clear configuration.")
+                
+        # Try to load saved data if exists
+        if st.session_state.visualizer.has_browser_data() and st.session_state.data is None:
+            if st.button("Load Saved Data"):
+                data, date_range = st.session_state.visualizer.load_from_browser()
+                if data is not None:
+                    st.session_state.data = data
+                    st.session_state.date_range = date_range
+                    st.session_state.visualizer = BalthazarVisualizer(data)
+                    st.success("Data loaded successfully!")
+                else:
+                    st.error("Failed to load saved data.")
+                    
         # Fetch data button
         if st.button("Fetch Data"):
             with st.spinner("Fetching data from Google Sheets..."):
@@ -110,7 +125,13 @@ def main():
                         st.session_state.data = data
                         st.session_state.date_range = (start_date, end_date)
                         st.session_state.visualizer = BalthazarVisualizer(data)
-                        st.success("Data fetched successfully!")
+                        
+                        # Save data to storage
+                        success = st.session_state.visualizer.save_to_browser(st.session_state.date_range)
+                        if success:
+                            st.success("Data fetched and saved successfully!")
+                        else:
+                            st.warning("Data fetched but could not be saved.")
                     else:
                         st.error("Failed to fetch data. Please check your connection.")
                 except Exception as e:
@@ -123,8 +144,8 @@ def main():
     if auto_fetch and st.session_state.config and st.session_state.data is None:
         with st.spinner("Auto-fetching data..."):
             try:
-                start_date = datetime.strptime(st.session_state.config["date_range"][0], "%Y-%m-%d")
-                end_date = datetime.strptime(st.session_state.config["date_range"][1], "%Y-%m-%d")
+                start_date = datetime.strptime(st.session_state.config["date_range"][0], "%Y-%m-%d").date()
+                end_date = datetime.strptime(st.session_state.config["date_range"][1], "%Y-%m-%d").date()
                 
                 if st.session_state.config.get("credentials_json"):
                     with open("google_credentials.json", "w") as f:
@@ -136,16 +157,31 @@ def main():
                     st.session_state.data = data
                     st.session_state.date_range = (start_date, end_date)
                     st.session_state.visualizer = BalthazarVisualizer(data)
-                    st.success("Data auto-fetched successfully!")
+                    
+                    # Save data to storage
+                    success = st.session_state.visualizer.save_to_browser(st.session_state.date_range)
+                    if success:
+                        st.success("Data auto-fetched and saved successfully!")
+                    else:
+                        st.warning("Data auto-fetched but could not be saved.")
                 else:
                     st.error("Failed to auto-fetch data. Please check your connection.")
             except Exception as e:
                 st.error(f"Error auto-fetching data: {str(e)}")
     
+    # Check if we should try loading data from disk at startup
+    if st.session_state.data is None and st.session_state.visualizer.has_browser_data():
+        try:
+            data, date_range = st.session_state.visualizer.load_from_browser()
+            if data is not None:
+                st.session_state.data = data
+                st.session_state.date_range = date_range
+                st.session_state.visualizer = BalthazarVisualizer(data)
+                st.info("Previously saved data loaded automatically.")
+        except Exception as e:
+            st.warning(f"Could not load saved data: {str(e)}")
+    
     if st.session_state.data is not None and st.session_state.visualizer is not None:
-        # Save data to browser
-        st.session_state.visualizer.save_to_browser(st.session_state.date_range)
-        
         # Display metrics
         st.header("Key Metrics")
         metrics = st.session_state.visualizer.create_metrics_display()
