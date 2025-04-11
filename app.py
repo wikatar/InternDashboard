@@ -315,13 +315,13 @@ if (uploaded_creds is not None or credentials_json) and fetch_button:
                     if save_success and config_success:
                         status.update(label="✅ Data fetched and saved successfully!", state="complete")
                     elif save_success:
-                        status.update(label="✅ Data fetched but config couldn't be saved", state="warning")
+                        status.update(label="✅ Data fetched but config couldn't be saved", state="error")
                     elif config_success:
-                        status.update(label="✅ Data fetched but couldn't be saved to browser", state="warning")
+                        status.update(label="✅ Data fetched but couldn't be saved to browser", state="error")
                     else:
-                        status.update(label="✅ Data fetched but nothing could be saved", state="warning")
+                        status.update(label="✅ Data fetched but nothing could be saved", state="error")
                 except Exception as e:
-                    status.update(label=f"✅ Data fetched but error saving: {str(e)}", state="warning")
+                    status.update(label=f"✅ Data fetched but error saving: {str(e)}", state="error")
                     print(f"Error during save: {str(e)}")
                 
                 # Output the structure of the processed data for debugging
@@ -609,6 +609,18 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                         marker=dict(size=10, symbol="circle")
                                     ))
                                     
+                                    # Even if we have no data, ensure we have at least one trace
+                                    if not goals_x and not outcomes_x:
+                                        # Add a dummy invisible trace to ensure plot is created
+                                        min_week, max_week = 15, 26  # Using a reasonable default range
+                                        fig.add_trace(go.Scatter(
+                                            x=[min_week, max_week],
+                                            y=[0, 0],
+                                            mode='lines',
+                                            line=dict(color="rgba(0,0,0,0)"),  # Transparent
+                                            showlegend=False
+                                        ))
+                                    
                                     # Add values on points if requested
                                     if show_values:
                                         if goals_x:
@@ -672,6 +684,9 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                     )
                                 )
                                 
+                                # Display a debug message
+                                st.caption(f"Rendering plot for {category} with data: goals={len(goals_x)} points, outcomes={len(outcomes_x)} points")
+                                
                                 # Display the chart
                                 st.plotly_chart(fig, use_container_width=True)
                             else:
@@ -683,6 +698,9 @@ if 'data' in st.session_state and st.session_state.data is not None:
                 
                 all_categories = sorted(df["Category"].unique())
                 colors = px.colors.qualitative.Plotly
+                
+                # Keep track of whether we added any traces
+                added_traces = False
                 
                 for i, category in enumerate(all_categories):
                     cat_df = df[df["Category"] == category].copy()
@@ -705,6 +723,7 @@ if 'data' in st.session_state and st.session_state.data is not None:
                             line=dict(color=colors[color_idx], dash='dot'),
                             marker=dict(symbol='circle')
                         ))
+                        added_traces = True
                     
                     # Plot outcomes for this category
                     outcomes = cat_df[cat_df["Type"] == "Utfall"].dropna(subset=["Value"])
@@ -721,6 +740,19 @@ if 'data' in st.session_state and st.session_state.data is not None:
                             line=dict(color=colors[color_idx]),
                             marker=dict(symbol='square')
                         ))
+                        added_traces = True
+                
+                # If no traces were added, add a dummy invisible trace
+                if not added_traces:
+                    min_week, max_week = 15, 26  # Using a reasonable default range
+                    fig.add_trace(go.Scatter(
+                        x=[min_week, max_week],
+                        y=[0, 0],
+                        mode='lines',
+                        line=dict(color="rgba(0,0,0,0)"),  # Transparent
+                        showlegend=False
+                    ))
+                    st.warning("No data available for plotting in Advanced Line Charts view")
                 
                 # Update layout
                 fig.update_layout(
@@ -733,8 +765,20 @@ if 'data' in st.session_state and st.session_state.data is not None:
                     legend=dict(
                         font=dict(color="white"),
                         bgcolor="#262730"
+                    ),
+                    xaxis=dict(
+                        gridcolor="#444", 
+                        range=[15, 27],  # Use the actual range from the data
+                        dtick=1,
+                        tickmode="linear"
+                    ),
+                    yaxis=dict(
+                        gridcolor="#444"
                     )
                 )
+                
+                # Add debug information
+                st.caption(f"Advanced Line Charts - Categories: {len(all_categories)}, Data points: {len(df)}")
                 
                 # Display the chart
                 st.plotly_chart(fig, use_container_width=True)
@@ -743,40 +787,68 @@ if 'data' in st.session_state and st.session_state.data is not None:
                 # Display categories using the visualizer's group plots function
                 if financial_filtered:
                     st.write("### Financial Metrics")
-                    fig = visualizer.create_category_group_plots(financial_filtered, "Financial Metrics", 
-                                                           figsize=st.session_state.settings['graph_settings']['figsize'],
-                                                           x_range=week_range)
-                    st.pyplot(fig)
+                    try:
+                        fig = visualizer.create_category_group_plots(financial_filtered, "Financial Metrics", 
+                                                               figsize=st.session_state.settings['graph_settings']['figsize'],
+                                                               x_range=week_range)
+                        st.pyplot(fig)
+                        st.caption(f"Rendered financial metrics: {', '.join(financial_filtered)}")
+                    except Exception as e:
+                        st.error(f"Error rendering financial metrics: {str(e)}")
                 
                 if productivity_filtered:
                     st.write("### Productivity Metrics")
-                    fig = visualizer.create_category_group_plots(productivity_filtered, "Productivity Metrics", 
-                                                           figsize=st.session_state.settings['graph_settings']['figsize'],
-                                                           x_range=week_range)
-                    st.pyplot(fig)
+                    try:
+                        fig = visualizer.create_category_group_plots(productivity_filtered, "Productivity Metrics", 
+                                                               figsize=st.session_state.settings['graph_settings']['figsize'],
+                                                               x_range=week_range)
+                        st.pyplot(fig)
+                        st.caption(f"Rendered productivity metrics: {', '.join(productivity_filtered)}")
+                    except Exception as e:
+                        st.error(f"Error rendering productivity metrics: {str(e)}")
                 
                 if content_filtered:
                     st.write("### Content Metrics")
-                    fig = visualizer.create_category_group_plots(content_filtered, "Content Metrics", 
-                                                           figsize=st.session_state.settings['graph_settings']['figsize'],
-                                                           x_range=week_range)
-                    st.pyplot(fig)
+                    try:
+                        fig = visualizer.create_category_group_plots(content_filtered, "Content Metrics", 
+                                                               figsize=st.session_state.settings['graph_settings']['figsize'],
+                                                               x_range=week_range)
+                        st.pyplot(fig)
+                        st.caption(f"Rendered content metrics: {', '.join(content_filtered)}")
+                    except Exception as e:
+                        st.error(f"Error rendering content metrics: {str(e)}")
                     
                 if other_categories:
                     st.write("### Other Metrics")
-                    fig = visualizer.create_category_group_plots(other_categories, "Other Metrics", 
-                                                           figsize=st.session_state.settings['graph_settings']['figsize'],
-                                                           x_range=week_range)
-                    st.pyplot(fig)
+                    try:
+                        fig = visualizer.create_category_group_plots(other_categories, "Other Metrics", 
+                                                               figsize=st.session_state.settings['graph_settings']['figsize'],
+                                                               x_range=week_range)
+                        st.pyplot(fig)
+                        st.caption(f"Rendered other metrics: {', '.join(other_categories)}")
+                    except Exception as e:
+                        st.error(f"Error rendering other metrics: {str(e)}")
             
             elif plot_style == "Individual Metrics":
                 # Display each category individually
                 for category in sorted(df["Category"].unique()):
                     st.write(f"### {category}")
-                    fig = visualizer.create_metric_comparison(category, 
-                                                       figsize=st.session_state.settings['graph_settings']['figsize'],
-                                                       x_range=week_range)
-                    st.pyplot(fig)
+                    try:
+                        # Check if there is any data for this category
+                        cat_df = df[df["Category"] == category]
+                        goals_count = len(cat_df[cat_df["Type"] == "Mål"])
+                        outcomes_count = len(cat_df[cat_df["Type"] == "Utfall"])
+                        
+                        # Add debug information
+                        st.caption(f"Data points: Goals = {goals_count}, Outcomes = {outcomes_count}")
+                        
+                        # Create the plot
+                        fig = visualizer.create_metric_comparison(category, 
+                                                           figsize=st.session_state.settings['graph_settings']['figsize'],
+                                                           x_range=week_range)
+                        st.pyplot(fig)
+                    except Exception as e:
+                        st.error(f"Error rendering plot for {category}: {str(e)}")
             
             elif plot_style == "Raw Data":
                 # Display raw data

@@ -422,7 +422,8 @@ class BalthazarVisualizer:
                                linestyle=":", 
                                marker="o" if self.show_markers else None,
                                label="Mål",
-                               drawstyle='steps-post')  # Use steps-post to avoid ghosting
+                               linewidth=2.5,
+                               markersize=8)
                 
                 # Plot outcomes (solid line)
                 if not outcomes.empty:
@@ -431,7 +432,8 @@ class BalthazarVisualizer:
                                linestyle="-", 
                                marker="o" if self.show_markers else None,
                                label="Utfall",
-                               drawstyle='steps-post')  # Use steps-post to avoid ghosting
+                               linewidth=2.5,
+                               markersize=8)
                 
                 # Basic plot settings
                 axes[i].set_title(category, color="#FFFFFF")
