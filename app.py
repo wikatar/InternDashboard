@@ -179,6 +179,17 @@ with st.sidebar:
     # Fetch data button
     fetch_button = st.button("Fetch Data", type="primary")
     
+    # Add Debug buttons for direct data inspection
+    with st.expander("Raw Data Inspection", expanded=False):
+        if 'data' in st.session_state:
+            if st.button("Show Sales Data Only"):
+                sales_data = st.session_state.data[st.session_state.data["Category"] == "Försäljning SEK eller högre"]
+                st.dataframe(sales_data)
+                st.text(f"Sales data shape: {sales_data.shape}")
+                
+            if st.button("View All Raw Data"):
+                st.dataframe(st.session_state.data)
+    
     # Clear saved data button
     if st.session_state.visualizer.has_browser_data():
         if st.button("Clear Saved Data"):
@@ -558,6 +569,36 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                     marker=dict(size=8, symbol="circle")
                                 ))
                                 
+                                # If this is Försäljning SEK eller högre and we only have one data point
+                                # Add additional handling to make sure the sales graph looks good
+                                if category == "Försäljning SEK eller högre" and len(goal_data) == 1:
+                                    # Get current value
+                                    current_week = goal_data["Week"].iloc[0]
+                                    current_val = goal_data["Value"].iloc[0]
+                                    
+                                    # Create a list of new rows with the same goal value for all weeks
+                                    new_rows = []
+                                    for week in range(15, 27):
+                                        if week != current_week:
+                                            new_rows.append({
+                                                "Week": week,
+                                                "Value": current_val,
+                                                "Type": "Mål",
+                                                "Category": category
+                                            })
+                                    
+                                    # Use concat instead of append (which is deprecated)
+                                    if new_rows:
+                                        new_df = pd.DataFrame(new_rows)
+                                        goal_data = pd.concat([goal_data, new_df], ignore_index=True)
+                                        
+                                        # Sort again
+                                        goal_data = goal_data.sort_values("Week")
+                                        
+                                        # Update the plot with extended goal data
+                                        fig.data[0].x = goal_data["Week"].tolist()
+                                        fig.data[0].y = goal_data["Value"].tolist()
+                                
                                 # Add labels to points
                                 if show_values:
                                     for i, row in goal_data.iterrows():
@@ -579,32 +620,13 @@ if 'data' in st.session_state and st.session_state.data is not None:
                             if outcome_data.empty and not goal_data.empty:
                                 # Create synthetic zeros for all weeks with goals
                                 outcome_weeks = goal_data["Week"].unique()
-                                outcome_x = outcome_weeks.tolist()
+                                
+                                # Special case for Försäljning SEK eller högre - show all weeks 15-26
+                                if category == "Försäljning SEK eller högre":
+                                    outcome_weeks = list(range(15, 27))  # Weeks 15-26
+                                
+                                outcome_x = outcome_weeks.tolist() if not isinstance(outcome_weeks, list) else outcome_weeks
                                 outcome_y = [0] * len(outcome_weeks)
-                                
-                                fig.add_trace(go.Scatter(
-                                    x=outcome_x,
-                                    y=outcome_y,
-                                    mode="lines+markers",
-                                    name="Utfall",
-                                    line=dict(color="#FF4B4B", width=2),
-                                    marker=dict(size=8, symbol="circle")
-                                ))
-                                
-                                # Add zero labels
-                                if show_values:
-                                    for week in outcome_weeks:
-                                        fig.add_annotation(
-                                            x=week,
-                                            y=0,
-                                            text="0",
-                                            showarrow=False,
-                                            yshift=10,
-                                            font=dict(color="#FF4B4B"),
-                                            bgcolor="rgba(0,0,0,0.6)",
-                                            bordercolor="#FF4B4B",
-                                            borderwidth=1
-                                        )
                             elif not outcome_data.empty:
                                 # Sort by week
                                 outcome_data = outcome_data.sort_values("Week")
@@ -649,6 +671,12 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                 min_week = min(all_weeks)
                                 max_week = max(all_weeks)
                                 
+                                # For Försäljning SEK eller högre, ensure we show the full range even if data is limited
+                                if category == "Försäljning SEK eller högre":
+                                    if max_week - min_week < 10:  # If range is too small
+                                        min_week = 15
+                                        max_week = 26
+                                
                                 if week_range:
                                     if week_range[0] <= max_week and week_range[1] >= min_week:
                                         min_week = max(min_week, week_range[0])
@@ -673,9 +701,18 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                 y_padding_bottom = (max_val - min_val) * 0.1
                                 y_min = max(0, min_val - y_padding_bottom)  # Don't go below zero unless data is negative
                                 y_max = max_val + y_padding_top
+                                
+                                # Special case for Försäljning SEK eller högre to ensure proper scale
+                                if category == "Försäljning SEK eller högre":
+                                    # Ensure maximum of 7000 to show 5000 comfortably
+                                    y_max = max(7000, y_max)
                             else:
                                 y_min = 0
                                 y_max = 100
+                                
+                                # Special case for Försäljning SEK eller högre
+                                if category == "Försäljning SEK eller högre":
+                                    y_max = 7000  # Default max for sales
                             
                             # Update layout
                             fig.update_layout(
@@ -714,6 +751,21 @@ if 'data' in st.session_state and st.session_state.data is not None:
                             
                             # Display the figure
                             st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Add detailed data points debug info
+                            if category == "Försäljning SEK eller högre":
+                                with st.expander("Debug Data", expanded=False):
+                                    st.write("### Goal Data Points")
+                                    if not goal_data.empty:
+                                        st.dataframe(goal_data[["Week", "Value"]])
+                                    else:
+                                        st.write("No goal data")
+                                        
+                                    st.write("### Outcome Data Points")
+                                    if not outcome_data.empty:
+                                        st.dataframe(outcome_data[["Week", "Value"]])
+                                    else:
+                                        st.write("No outcome data")
             
             elif plot_style == "Advanced Line Charts":
                 # Direct plotting implementation for all categories in one chart
@@ -887,22 +939,13 @@ if 'data' in st.session_state and st.session_state.data is not None:
                         if outcome_data.empty and not goal_data.empty:
                             # Create synthetic zeros for all weeks with goals
                             outcome_weeks = goal_data["Week"].unique()
-                            outcome_x = outcome_weeks.tolist()
-                            outcome_y = [0] * len(outcome_weeks)
                             
-                            fig.add_trace(
-                                go.Scatter(
-                                    x=outcome_x,
-                                    y=outcome_y,
-                                    mode="lines+markers",
-                                    name="Utfall",
-                                    line=dict(color="#FF4B4B"),
-                                    marker=dict(size=6),
-                                    legendgroup="Utfall",
-                                    showlegend=i==0  # Only show legend for first category
-                                ),
-                                row=row, col=col
-                            )
+                            # Special case for Försäljning SEK eller högre - show all weeks 15-26
+                            if category == "Försäljning SEK eller högre":
+                                outcome_weeks = list(range(15, 27))  # Weeks 15-26
+                            
+                            outcome_x = outcome_weeks.tolist() if not isinstance(outcome_weeks, list) else outcome_weeks
+                            outcome_y = [0] * len(outcome_weeks)
                         elif not outcome_data.empty:
                             # Sort by week
                             outcome_data = outcome_data.sort_values("Week")
@@ -1018,32 +1061,13 @@ if 'data' in st.session_state and st.session_state.data is not None:
                     if outcome_data.empty and not goal_data.empty:
                         # Create synthetic zeros for all weeks with goals
                         outcome_weeks = goal_data["Week"].unique()
-                        outcome_x = outcome_weeks.tolist()
+                        
+                        # Special case for Försäljning SEK eller högre - show all weeks 15-26
+                        if category == "Försäljning SEK eller högre":
+                            outcome_weeks = list(range(15, 27))  # Weeks 15-26
+                        
+                        outcome_x = outcome_weeks.tolist() if not isinstance(outcome_weeks, list) else outcome_weeks
                         outcome_y = [0] * len(outcome_weeks)
-                        
-                        fig.add_trace(go.Scatter(
-                            x=outcome_x,
-                            y=outcome_y,
-                            mode="lines+markers",
-                            name="Utfall",
-                            line=dict(color="#FF4B4B", width=2),
-                            marker=dict(size=10, symbol="circle")
-                        ))
-                        
-                        # Add zero labels
-                        if show_values:
-                            for week in outcome_weeks:
-                                fig.add_annotation(
-                                    x=week,
-                                    y=0,
-                                    text="0",
-                                    showarrow=False,
-                                    yshift=10,
-                                    font=dict(color="#FF4B4B"),
-                                    bgcolor="rgba(0,0,0,0.6)",
-                                    bordercolor="#FF4B4B",
-                                    borderwidth=1
-                                )
                     elif not outcome_data.empty:
                         # Sort by week
                         outcome_data = outcome_data.sort_values("Week")
@@ -1085,6 +1109,12 @@ if 'data' in st.session_state and st.session_state.data is not None:
                         min_week = min(all_weeks)
                         max_week = max(all_weeks)
                         
+                        # For Försäljning SEK eller högre, ensure we show the full range even if data is limited
+                        if category == "Försäljning SEK eller högre":
+                            if max_week - min_week < 10:  # If range is too small
+                                min_week = 15
+                                max_week = 26
+                        
                         if week_range:
                             if week_range[0] <= max_week and week_range[1] >= min_week:
                                 min_week = max(min_week, week_range[0])
@@ -1109,9 +1139,17 @@ if 'data' in st.session_state and st.session_state.data is not None:
                         y_padding_bottom = (max_val - min_val) * 0.1
                         y_min = max(0, min_val - y_padding_bottom)  # Don't go below zero unless data is negative
                         y_max = max_val + y_padding_top
+                        
+                        # Special case for Försäljning SEK eller högre
+                        if category == "Försäljning SEK eller högre":
+                            y_max = max(7000, y_max)  # Ensure we can see 5000 comfortably
                     else:
                         y_min = 0
                         y_max = 100
+                        
+                        # Special case for Försäljning SEK eller högre
+                        if category == "Försäljning SEK eller högre":
+                            y_max = 7000  # Default max for sales
                     
                     # Update layout
                     fig.update_layout(
@@ -1199,8 +1237,13 @@ if 'data' in st.session_state and st.session_state.data is not None:
                 
                 # If no outcomes but goals exist, create synthetic zeros
                 if goals_x:
-                    outcomes_x = goals_x.copy()
-                    outcomes_y = [0] * len(goals_x)
+                    # Special case for Försäljning SEK eller högre - show all weeks 15-26
+                    if selected_category == "Försäljning SEK eller högre":
+                        outcomes_x = list(range(15, 27))  # Weeks 15-26
+                    else:
+                        outcomes_x = goals_x.copy()
+                    
+                    outcomes_y = [0] * len(outcomes_x)
             
             # Create Plotly figure for the selected category
             detail_fig = go.Figure()
@@ -1230,6 +1273,14 @@ if 'data' in st.session_state and st.session_state.data is not None:
             # Get all weeks
             all_weeks = sorted(set(goals_x + outcomes_x))
             if all_weeks:
+                # For Försäljning SEK eller högre, ensure we show the full range even if data is limited
+                if selected_category == "Försäljning SEK eller högre":
+                    min_week = 15
+                    max_week = 26
+                else:
+                    min_week = min(all_weeks)
+                    max_week = max(all_weeks)
+                
                 # Calculate y-axis range with padding
                 all_values = goals_y + outcomes_y
                 if all_values:
@@ -1240,13 +1291,19 @@ if 'data' in st.session_state and st.session_state.data is not None:
                     y_padding_bottom = (max_val - min_val) * 0.1 if max_val > min_val else max_val * 0.1
                     y_min = max(0, min_val - y_padding_bottom)  # Don't go below zero unless data is negative
                     y_max = max_val + y_padding_top
+                    
+                    # Special case for Försäljning SEK eller högre
+                    if selected_category == "Försäljning SEK eller högre":
+                        y_max = max(7000, y_max)  # Ensure we can see 5000 comfortably
                 else:
                     y_min = 0
                     y_max = 100
+                    
+                    # Special case for Försäljning SEK eller högre
+                    if selected_category == "Försäljning SEK eller högre":
+                        y_max = 7000  # Default max for sales
                 
                 # Update layout
-                min_week = min(all_weeks)
-                max_week = max(all_weeks)
                 detail_fig.update_layout(
                     title=f"{selected_category} Detail View",
                     xaxis_title="Week",
@@ -1280,6 +1337,55 @@ if 'data' in st.session_state and st.session_state.data is not None:
                 st.plotly_chart(detail_fig, use_container_width=True)
             else:
                 st.warning(f"No data available for {selected_category}")
+
+        # Debug the data processing
+        with st.expander("Debug Data Processing", expanded=False):
+            st.write("### Debug: Data Conversion Process")
+            
+            # Create a copy for debug display
+            debug_df = df.copy()
+            st.write(f"Original data types: {debug_df.dtypes}")
+            
+            # Display conversion details
+            if "Date" in debug_df.columns:
+                st.write("Date column before conversion:")
+                st.write(debug_df["Date"].head(10))
+                
+                # Try to convert
+                try:
+                    debug_df["Date"] = pd.to_numeric(debug_df["Date"], errors="coerce")
+                    st.write("Date column after conversion:")
+                    st.write(debug_df["Date"].head(10))
+                except Exception as e:
+                    st.write(f"Error converting Date: {str(e)}")
+            
+            # Show Week column
+            if "Week" in debug_df.columns:
+                st.write("Week column:")
+                st.write(debug_df["Week"].head(10))
+            
+            # For Försäljning SEK eller högre
+            sales_data = debug_df[debug_df["Category"] == "Försäljning SEK eller högre"].copy()
+            st.write(f"Försäljning SEK eller högre data points: {len(sales_data)}")
+            if not sales_data.empty:
+                st.dataframe(sales_data)
+            else:
+                st.write("No sales data found")
+
+        # Visualize the data
+        with st.container():
+            # Special handling for Försäljning SEK eller högre
+            if selected_category == "Försäljning SEK eller högre":
+                st.markdown("""
+                <div style="background-color: #262730; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                    <h3 style="color: white;">Försäljning SEK eller högre - Visualization Notes</h3>
+                    <ul style="color: white;">
+                        <li>This chart is configured to always show the full week range (15-26).</li>
+                        <li>Y-axis maximum is set to at least 7000 to properly display the 5000 SEK goal.</li>
+                        <li>If no outcome data exists, a zero line will be displayed.</li>
+                    </ul>
+                </div>
+                """, unsafe_allow_html=True)
 
 else:
     # Instructions when no data is loaded
