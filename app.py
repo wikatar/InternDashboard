@@ -350,6 +350,23 @@ if 'data' in st.session_state:
     
     st.markdown("---")
     
+    # Add visualization settings
+    st.subheader("Visualization Settings")
+    display_cols = st.columns([2, 1, 1])
+    
+    with display_cols[0]:
+        plot_style = st.selectbox(
+            "Select Plot Style",
+            ["Simple Line Charts", "Advanced Line Charts", "Gauge Charts", "Comparison Charts"],
+            help="Choose how metrics are displayed"
+        )
+    
+    with display_cols[1]:
+        show_values = st.checkbox("Show Values on Points", value=True)
+    
+    with display_cols[2]:
+        invert_metrics = st.checkbox("Auto-Invert Lower-Better Metrics", value=True)
+    
     # Create tabs for different views
     tab1, tab2, tab3 = st.tabs(["Category Groups 📊", "Individual Metrics 📈", "Raw Data 📋"])
     
@@ -364,31 +381,43 @@ if 'data' in st.session_state:
         visualizer.show_grid = st.session_state.settings['graph_settings']['show_grid']
         visualizer.default_figsize = st.session_state.settings['graph_settings']['figsize']
         
-        # Create dashboard visualizations
-        week_range = getattr(st.session_state, 'week_range', None)
-        figures = visualizer.create_summary_dashboard(x_range=week_range)  # Use selected week range
+        # Use the selected display type
+        if plot_style == "Simple Line Charts":
+            # Create simple line charts using matplotlib
+            week_range = getattr(st.session_state, 'week_range', None)
+            figures = visualizer.create_summary_dashboard(x_range=week_range)
+            
+            # Display each group in an expander
+            for group_name, fig in figures.items():
+                with st.expander(group_name, expanded=True):
+                    st.pyplot(fig)
         
-        # Ensure static directory exists
-        os.makedirs("static", exist_ok=True)
+        elif plot_style == "Advanced Line Charts":
+            # Create advanced line charts using plotly
+            category_plots = visualizer.create_category_plots()
+            for plot in category_plots:
+                st.plotly_chart(plot, use_container_width=True)
         
-        # Save figures to files
-        for group_name, fig in figures.items():
-            try:
-                # Create filename from group name
-                filename = f"static/{group_name.lower().replace(' ', '_')}.png"
-                fig.savefig(filename, dpi=300, bbox_inches="tight")
-            except Exception as e:
-                st.warning(f"Failed to save {group_name} plot: {str(e)}")
-            finally:
-                plt.close(fig)
+        elif plot_style == "Gauge Charts":
+            # Display metrics as gauge charts
+            metrics_display = visualizer.create_metrics_display()
+            st.plotly_chart(metrics_display, use_container_width=True)
         
-        # Display each group in an expander
-        for group_name, fig in figures.items():
-            with st.expander(group_name, expanded=True):
-                st.pyplot(fig)
+        elif plot_style == "Comparison Charts":
+            # Display comparison charts with achievement percentages
+            comparison_plots = visualizer.create_comparison_plots()
+            for plot in comparison_plots:
+                st.plotly_chart(plot, use_container_width=True)
     
     with tab2:
         if 'selected_category' in locals() and selected_category != "All Categories":
+            # Add chart type selector for individual metrics
+            chart_type = st.radio(
+                "Chart Type", 
+                ["Line Chart", "Bar Chart", "Area Chart", "Combo Chart"],
+                horizontal=True
+            )
+            
             # Create individual category visualization with custom settings
             visualizer = BalthazarVisualizer(df)
             visualizer.colors = {
@@ -399,10 +428,141 @@ if 'data' in st.session_state:
             visualizer.show_grid = st.session_state.settings['graph_settings']['show_grid']
             visualizer.default_figsize = st.session_state.settings['graph_settings']['figsize']
             
-            # Use selected week range for individual metrics
-            week_range = getattr(st.session_state, 'week_range', None)
-            fig = visualizer.create_metric_comparison(selected_category, x_range=week_range)
-            st.pyplot(fig)
+            import plotly.graph_objects as go
+            from plotly.subplots import make_subplots
+            
+            # Get data for the selected category
+            visualizer.prepare_data()
+            cat_df = df[df["Category"] == selected_category].copy()
+            
+            # Check if this is a "lower is better" metric
+            is_lower_better = any(pattern in selected_category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
+            
+            # Filter non-NA values
+            goals = cat_df[cat_df["Type"] == "Mål"].dropna(subset=["Value"])
+            outcomes = cat_df[cat_df["Type"] == "Utfall"].dropna(subset=["Value"])
+            
+            # Create plot based on selected chart type
+            if chart_type == "Line Chart":
+                fig = go.Figure()
+                
+                if not goals.empty:
+                    fig.add_trace(go.Scatter(
+                        x=goals["Week"], y=goals["Value"],
+                        mode='lines+markers',
+                        name='Mål',
+                        line=dict(color=visualizer.colors["Mål"], dash='dash'),
+                        marker=dict(size=10)
+                    ))
+                    
+                if not outcomes.empty:
+                    fig.add_trace(go.Scatter(
+                        x=outcomes["Week"], y=outcomes["Value"],
+                        mode='lines+markers',
+                        name='Utfall',
+                        line=dict(color=visualizer.colors["Utfall"]),
+                        marker=dict(size=10)
+                    ))
+                    
+            elif chart_type == "Bar Chart":
+                fig = go.Figure()
+                
+                if not goals.empty:
+                    fig.add_trace(go.Bar(
+                        x=goals["Week"], y=goals["Value"],
+                        name='Mål',
+                        marker_color=visualizer.colors["Mål"]
+                    ))
+                    
+                if not outcomes.empty:
+                    fig.add_trace(go.Bar(
+                        x=outcomes["Week"], y=outcomes["Value"],
+                        name='Utfall',
+                        marker_color=visualizer.colors["Utfall"]
+                    ))
+                
+            elif chart_type == "Area Chart":
+                fig = go.Figure()
+                
+                if not goals.empty:
+                    fig.add_trace(go.Scatter(
+                        x=goals["Week"], y=goals["Value"],
+                        mode='lines',
+                        name='Mål',
+                        line=dict(color=visualizer.colors["Mål"]),
+                        fill='tozeroy'
+                    ))
+                    
+                if not outcomes.empty:
+                    fig.add_trace(go.Scatter(
+                        x=outcomes["Week"], y=outcomes["Value"],
+                        mode='lines',
+                        name='Utfall',
+                        line=dict(color=visualizer.colors["Utfall"]),
+                        fill='tozeroy'
+                    ))
+                
+            elif chart_type == "Combo Chart":
+                fig = go.Figure()
+                
+                if not goals.empty:
+                    fig.add_trace(go.Bar(
+                        x=goals["Week"], y=goals["Value"],
+                        name='Mål',
+                        marker_color=visualizer.colors["Mål"],
+                        opacity=0.7
+                    ))
+                    
+                if not outcomes.empty:
+                    fig.add_trace(go.Scatter(
+                        x=outcomes["Week"], y=outcomes["Value"],
+                        mode='lines+markers',
+                        name='Utfall',
+                        line=dict(color=visualizer.colors["Utfall"]),
+                        marker=dict(size=10)
+                    ))
+            
+            # Add data labels if requested
+            if show_values:
+                if not goals.empty:
+                    for x, y in zip(goals["Week"], goals["Value"]):
+                        fig.add_annotation(
+                            x=x, y=y,
+                            text=f"{y}",
+                            showarrow=False,
+                            yshift=10,
+                            font=dict(color=visualizer.colors["Mål"]),
+                            bgcolor="rgba(255,255,255,0.7)"
+                        )
+                
+                if not outcomes.empty:
+                    for x, y in zip(outcomes["Week"], outcomes["Value"]):
+                        fig.add_annotation(
+                            x=x, y=y,
+                            text=f"{y}",
+                            showarrow=False,
+                            yshift=10,
+                            font=dict(color=visualizer.colors["Utfall"]),
+                            bgcolor="rgba(255,255,255,0.7)"
+                        )
+            
+            # Update layout
+            fig.update_layout(
+                title=f"{selected_category}: Mål vs. Utfall",
+                xaxis_title="Week",
+                yaxis_title="Value" if not is_lower_better else "Value (lower is better)",
+                paper_bgcolor="#262730",
+                plot_bgcolor="#262730",
+                font=dict(color="white"),
+                legend=dict(
+                    font=dict(color="white"),
+                    bgcolor="#262730"
+                ),
+                xaxis=dict(gridcolor="#444"),
+                yaxis=dict(gridcolor="#444", autorange="reversed" if is_lower_better and invert_metrics else None)
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Select a specific category from the sidebar to see detailed metrics.")
     
