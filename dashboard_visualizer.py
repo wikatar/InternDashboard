@@ -6,6 +6,10 @@ from matplotlib.figure import Figure
 import numpy as np
 from browser_storage import BrowserStorage
 
+# Set the matplotlib backend to a non-interactive one
+import matplotlib
+matplotlib.use('Agg')
+
 class BalthazarVisualizer:
     def __init__(self, data):
         """Initialize visualizer with data."""

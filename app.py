@@ -624,20 +624,20 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                                     borderwidth=1,
                                                     borderpad=3
                                                 )
-                                        
-                                        if outcomes_x:
-                                            for x, y in zip(outcomes_x, outcomes_y):
-                                                fig.add_annotation(
-                                                    x=x, y=y,
-                                                    text=f"{int(y) if y == int(y) else y:.1f}",
-                                                    showarrow=False,
-                                                    yshift=15,
-                                                    font=dict(color="#FF4B4B", size=14),
-                                                    bgcolor="rgba(0,0,0,0.5)",
-                                                    bordercolor="#FF4B4B",
-                                                    borderwidth=1,
-                                                    borderpad=3
-                                                )
+                                            
+                                            if outcomes_x:
+                                                for x, y in zip(outcomes_x, outcomes_y):
+                                                    fig.add_annotation(
+                                                        x=x, y=y,
+                                                        text=f"{int(y) if y == int(y) else y:.1f}",
+                                                        showarrow=False,
+                                                        yshift=15,
+                                                        font=dict(color="#FF4B4B", size=14),
+                                                        bgcolor="rgba(0,0,0,0.5)",
+                                                        bordercolor="#FF4B4B",
+                                                        borderwidth=1,
+                                                        borderpad=3
+                                                    )
                                 
                                 # Check if this is a "lower is better" metric
                                 is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
@@ -672,6 +672,7 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                     )
                                 )
                                 
+                                # Display the chart
                                 st.plotly_chart(fig, use_container_width=True)
                             else:
                                 st.warning(f"No numeric data for {category}")
@@ -735,6 +736,7 @@ if 'data' in st.session_state and st.session_state.data is not None:
                     )
                 )
                 
+                # Display the chart
                 st.plotly_chart(fig, use_container_width=True)
             
             elif plot_style == "Category Groups":
@@ -887,22 +889,19 @@ if 'data' in st.session_state and st.session_state.data is not None:
                 st.plotly_chart(detail_fig, use_container_width=True)
             else:
                 st.warning(f"No data available for {selected_category}")
+
 else:
     # Instructions when no data is loaded
     st.info("Upload your Google API credentials and click 'Fetch Data' to start.")
     
-    # Sample image placeholder
-    st.markdown("### Sample Dashboard Preview")
-    
-    # Placeholder with instructions
+    # Only show essential instructions
     st.markdown("""
     This dashboard will display:
     1. 💰 **Financial Metrics** (Sales, Expenses)
     2. 📋 **Productivity Metrics** (Meetings, Git Commits, etc.)
     3. 🎬 **Content Metrics** (YouTube Videos)
-    4. 📊 **Additional Statistics** (YouTube, Website, Email, Customers)
     
-    Each category will show Goals ("Mål") vs. Outcomes ("Utfall") to help identify pain points.
+    Each category will show Goals ("Mål") vs. Outcomes ("Utfall").
     """)
 
 # Footer
