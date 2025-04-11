@@ -187,6 +187,11 @@ class BalthazarVisualizer:
                 ax.text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
                 return fig
                 
+            # Convert values to numeric to ensure they plot correctly
+            cat_df["Value"] = pd.to_numeric(cat_df["Value"], errors="coerce")
+            cat_df["Week"] = pd.to_numeric(cat_df["Week"], errors="coerce")
+            cat_df = cat_df.dropna(subset=["Value", "Week"])
+            
             # Get all weeks in the data
             all_weeks = sorted(cat_df["Week"].unique())
             print(f"Weeks for this category: {all_weeks}")
@@ -210,80 +215,115 @@ class BalthazarVisualizer:
             # Filter non-NA values for goals
             goal_df = cat_df[cat_df["Type"] == "Mål"].dropna(subset=["Value"])
             print(f"Goal data: {len(goal_df)} rows")
-            print(f"Goal data sample: {goal_df.head(3)}")
+            if not goal_df.empty:
+                print(f"Goal data sample: {goal_df.head(3)}")
+                
+                # Convert to native Python types to avoid PyArrow issues
+                goal_x = [int(x) for x in goal_df["Week"].tolist()]
+                goal_y = [float(y) for y in goal_df["Value"].tolist()]
+            else:
+                goal_x = []
+                goal_y = []
             
             # Filter non-NA values for outcomes
             outcome_df = cat_df[cat_df["Type"] == "Utfall"].dropna(subset=["Value"])
             print(f"Outcome data: {len(outcome_df)} rows")
-            print(f"Outcome data sample: {outcome_df.head(3)}")
-            
+            if not outcome_df.empty:
+                print(f"Outcome data sample: {outcome_df.head(3)}")
+                
+                # Convert to native Python types to avoid PyArrow issues
+                outcome_x = [int(x) for x in outcome_df["Week"].tolist()]
+                outcome_y = [float(y) for y in outcome_df["Value"].tolist()]
+            else:
+                outcome_x = []
+                outcome_y = []
+                
             # Plot goals (dotted line)
-            if not goal_df.empty:
-                print(f"Plotting goals: {goal_df['Week'].tolist()}, {goal_df['Value'].tolist()}")
+            if goal_x:
+                print(f"Plotting goals: {goal_x}, {goal_y}")
                 ax.plot(
-                    goal_df["Week"],
-                    goal_df["Value"],
+                    goal_x,
+                    goal_y,
                     color=self.colors["Mål"],
                     linestyle=":",
                     marker="o" if self.show_markers else None,
-                    label="Mål"
+                    label="Mål",
+                    linewidth=2.5,
+                    markersize=8
                 )
                 
             # Plot outcomes (solid line)
-            if not outcome_df.empty:
-                print(f"Plotting outcomes: {outcome_df['Week'].tolist()}, {outcome_df['Value'].tolist()}")
+            if outcome_x:
+                print(f"Plotting outcomes: {outcome_x}, {outcome_y}")
                 ax.plot(
-                    outcome_df["Week"],
-                    outcome_df["Value"],
+                    outcome_x,
+                    outcome_y,
                     color=self.colors["Utfall"],
                     linestyle="-",
                     marker="o" if self.show_markers else None,
-                    label="Utfall"
+                    label="Utfall",
+                    linewidth=2.5,
+                    markersize=8
                 )
             
             # Set plot title and labels
-            ax.set_title(f"{category}: Mål vs. Utfall", color="#FFFFFF", fontsize=14)
-            ax.set_xlabel("Week", color="#FAFAFA")
+            ax.set_title(f"{category}: Mål vs. Utfall", color="#FFFFFF", fontsize=14, fontweight='bold')
+            ax.set_xlabel("Week", color="#FAFAFA", fontsize=12)
             
             # If it's a "lower is better" metric, invert the y-axis
             if is_lower_better:
                 ax.invert_yaxis()
                 # Set y-axis label to indicate inversion
-                ax.set_ylabel("Value (lower is better)", color="#FAFAFA")
+                ax.set_ylabel("Value (lower is better)", color="#FAFAFA", fontsize=12)
             else:
-                ax.set_ylabel("Value", color="#FAFAFA")
+                ax.set_ylabel("Value", color="#FAFAFA", fontsize=12)
                 
             # Format x-axis to only show the weeks that are available
             if weeks:
                 ax.set_xticks(weeks)
-                ax.set_xticklabels([f"Week {w}" for w in weeks])
+                ax.set_xticklabels([f"Week {w}" for w in weeks], fontsize=10)
                 
                 # Set x-axis limits to ensure all weeks are shown
                 ax.set_xlim(min(weeks) - 0.5, max(weeks) + 0.5)
                 
             # Add data point annotations
-            for df, label in [(goal_df, "Mål"), (outcome_df, "Utfall")]:
-                if not df.empty:
-                    for x, y in zip(df["Week"], df["Value"]):
-                        ax.annotate(
-                            f"{y:.0f}",
-                            (x, y),
-                            textcoords="offset points",
-                            xytext=(0, 10),
-                            ha='center',
-                            color=self.colors[label],
-                            fontweight='bold'
-                        )
+            if goal_x:
+                for x, y in zip(goal_x, goal_y):
+                    ax.annotate(
+                        f"{int(y) if y == int(y) else y:.1f}",
+                        (x, y),
+                        textcoords="offset points",
+                        xytext=(0, 10),
+                        ha='center',
+                        color=self.colors["Mål"],
+                        fontweight='bold',
+                        fontsize=10,
+                        bbox=dict(boxstyle="round,pad=0.3", fc="black", alpha=0.6, ec=self.colors["Mål"])
+                    )
+
+            if outcome_x:
+                for x, y in zip(outcome_x, outcome_y):
+                    ax.annotate(
+                        f"{int(y) if y == int(y) else y:.1f}",
+                        (x, y),
+                        textcoords="offset points",
+                        xytext=(0, 10),
+                        ha='center',
+                        color=self.colors["Utfall"],
+                        fontweight='bold',
+                        fontsize=10,
+                        bbox=dict(boxstyle="round,pad=0.3", fc="black", alpha=0.6, ec=self.colors["Utfall"])
+                    )
             
-            # Add legend
-            ax.legend(title="", frameon=True, facecolor="#262730", edgecolor="#666666")
+            # Add legend with larger font
+            ax.legend(title="", frameon=True, facecolor="#262730", edgecolor="#666666", fontsize=12)
             
             # Add grid if enabled
             if self.show_grid:
                 ax.grid(True, linestyle="--", alpha=0.7, color="#444444")
             
-            # Tight layout
-            fig.tight_layout()
+            # Tight layout and a bit more padding for labels
+            fig.tight_layout(pad=2.0)
             print("Plot created successfully")
             
         except Exception as e:

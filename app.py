@@ -7,6 +7,7 @@ from dashboard_visualizer import BalthazarVisualizer
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import plotly.express as px
 
 # Set page config
 st.set_page_config(
@@ -343,7 +344,7 @@ if (uploaded_creds is not None or credentials_json) and fetch_button:
 
 # Display dashboard if data is available
 if 'data' in st.session_state and st.session_state.data is not None:
-    df = st.session_state.data
+    df = st.session_state.data.copy()
     
     # Validate that data has the required format
     required_columns = ["Date", "Category", "Type", "Value"]
@@ -426,27 +427,41 @@ if 'data' in st.session_state and st.session_state.data is not None:
         
         st.markdown("---")
         
-        # Add visualization settings
-        st.subheader("Visualization Settings")
-        display_cols = st.columns([2, 1, 1])
-        
-        with display_cols[0]:
-            plot_style = st.selectbox(
-                "Select Plot Style",
-                ["Simple Line Charts", "Advanced Line Charts", "Gauge Charts", "Comparison Charts"],
-                help="Choose how metrics are displayed"
-            )
-        
-        with display_cols[1]:
-            show_values = st.checkbox("Show Values on Points", value=True)
-        
-        with display_cols[2]:
-            invert_metrics = st.checkbox("Auto-Invert Lower-Better Metrics", value=True)
-        
-        # Create tabs for different views
-        tab1, tab2, tab3 = st.tabs(["Category Groups 📊", "Individual Metrics 📈", "Raw Data 📋"])
-        
-        with tab1:
+        # Create tabs for different visualization options
+        plot_style = st.radio(
+            "Select Plot Style",
+            ["Simple Line Charts", "Advanced Line Charts", "Category Groups", "Individual Metrics", "Raw Data"],
+            horizontal=True
+        )
+
+        # Week range filter
+        week_range = st.session_state.week_range if hasattr(st.session_state, 'week_range') else None
+
+        # Set default for controls
+        if 'show_values' not in st.session_state:
+            st.session_state.show_values = True
+        if 'invert_metrics' not in st.session_state:
+            st.session_state.invert_metrics = True
+
+        # Controls
+        with st.expander("Chart Controls", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                show_values = st.checkbox("Show Values on Points", value=st.session_state.show_values)
+                st.session_state.show_values = show_values
+            with col2:
+                invert_metrics = st.checkbox("Invert 'Lower is Better' Metrics", value=st.session_state.invert_metrics)
+                st.session_state.invert_metrics = invert_metrics
+
+        st.markdown("---")
+
+        # Main content container with padding
+        main_container = st.container()
+
+        # Initialize visualization engine
+        if 'data' in st.session_state and st.session_state.data is not None:
+            df = st.session_state.data.copy()
+            
             # Create visualizer with custom settings
             visualizer = BalthazarVisualizer(df)
             visualizer.colors = {
@@ -472,13 +487,7 @@ if 'data' in st.session_state and st.session_state.data is not None:
             # Get any other categories
             other_categories = [cat for cat in data_categories if cat not in financial + productivity + content]
             
-            # Get selected week range
-            week_range = getattr(st.session_state, 'week_range', None)
-            if week_range:
-                min_week, max_week = week_range
-            else:
-                min_week, max_week = 1, 52
-                
+            # Render the selected visualization type
             if plot_style == "Simple Line Charts":
                 # Create simple charts for each category group
                 all_groups = [
@@ -524,17 +533,30 @@ if 'data' in st.session_state and st.session_state.data is not None:
                             st.write(f"- Mål data points: {len(goals)}")
                             st.write(f"- Utfall data points: {len(outcomes)}")
                             
+                            # Convert to native Python types to avoid PyArrow conversion issues
+                            if not goals.empty:
+                                goals_x = [int(x) for x in goals["Week"].tolist()]
+                                goals_y = [float(y) for y in goals["Value"].tolist()]
+                            else:
+                                goals_x = []
+                                goals_y = []
+                                
+                            if not outcomes.empty:
+                                outcomes_x = [int(x) for x in outcomes["Week"].tolist()]
+                                outcomes_y = [float(y) for y in outcomes["Value"].tolist()]
+                            else:
+                                outcomes_x = []
+                                outcomes_y = []
+                            
                             # Get the weeks
-                            goal_weeks = goals["Week"].tolist() if not goals.empty else []
-                            outcome_weeks = outcomes["Week"].tolist() if not outcomes.empty else []
+                            goal_weeks = goals_x
+                            outcome_weeks = outcomes_x
                             all_weeks = sorted(set(goal_weeks + outcome_weeks))
                             
                             if all_weeks:
                                 # Filter for selected week range
                                 if week_range:
                                     min_week, max_week = week_range
-                                    goals = goals[(goals["Week"] >= min_week) & (goals["Week"] <= max_week)]
-                                    outcomes = outcomes[(outcomes["Week"] >= min_week) & (outcomes["Week"] <= max_week)]
                                 else:
                                     # Default to the weeks available in the data
                                     min_week = min(all_weeks)
@@ -544,10 +566,10 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                 fig = go.Figure()
                                 
                                 # Add goal trace (if we have data)
-                                if not goals.empty:
+                                if goals_x:
                                     fig.add_trace(go.Scatter(
-                                        x=goals["Week"], 
-                                        y=goals["Value"],
+                                        x=goals_x, 
+                                        y=goals_y,
                                         mode='lines+markers',
                                         name='Mål',
                                         line=dict(color="#00BFFF", dash='dash', width=3),
@@ -555,10 +577,10 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                     ))
                                     
                                 # Add outcome trace (if we have data)
-                                if not outcomes.empty:
+                                if outcomes_x:
                                     fig.add_trace(go.Scatter(
-                                        x=outcomes["Week"], 
-                                        y=outcomes["Value"],
+                                        x=outcomes_x, 
+                                        y=outcomes_y,
                                         mode='lines+markers',
                                         name='Utfall',
                                         line=dict(color="#FF4B4B", width=3),
@@ -567,11 +589,11 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                     
                                 # Add values on points if requested
                                 if show_values:
-                                    if not goals.empty:
-                                        for x, y in zip(goals["Week"], goals["Value"]):
+                                    if goals_x:
+                                        for x, y in zip(goals_x, goals_y):
                                             fig.add_annotation(
                                                 x=x, y=y,
-                                                text=f"{y:.0f}",
+                                                text=f"{int(y) if y == int(y) else y:.1f}",
                                                 showarrow=False,
                                                 yshift=15,
                                                 font=dict(color="#00BFFF", size=14),
@@ -581,11 +603,11 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                                 borderpad=3
                                             )
                                     
-                                    if not outcomes.empty:
-                                        for x, y in zip(outcomes["Week"], outcomes["Value"]):
+                                    if outcomes_x:
+                                        for x, y in zip(outcomes_x, outcomes_y):
                                             fig.add_annotation(
                                                 x=x, y=y,
-                                                text=f"{y:.0f}",
+                                                text=f"{int(y) if y == int(y) else y:.1f}",
                                                 showarrow=False,
                                                 yshift=15,
                                                 font=dict(color="#FF4B4B", size=14),
@@ -633,21 +655,108 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                 st.warning(f"No numeric data for {category}")
             
             elif plot_style == "Advanced Line Charts":
-                # Create advanced line charts using plotly
-                category_plots = visualizer.create_category_plots()
-                for plot in category_plots:
-                    st.plotly_chart(plot, use_container_width=True)
+                # Create single multi-line chart with all categories
+                fig = go.Figure()
+                
+                all_categories = sorted(df["Category"].unique())
+                colors = px.colors.qualitative.Plotly
+                
+                for i, category in enumerate(all_categories):
+                    cat_df = df[df["Category"] == category].copy()
+                    
+                    # Get color index with wraparound
+                    color_idx = i % len(colors)
+                    
+                    # Plot goals for this category
+                    goals = cat_df[cat_df["Type"] == "Mål"].dropna(subset=["Value"])
+                    if not goals.empty:
+                        # Convert to native types
+                        goals_x = [int(x) for x in goals["Week"].tolist()]
+                        goals_y = [float(y) for y in goals["Value"].tolist()]
+                        
+                        fig.add_trace(go.Scatter(
+                            x=goals_x,
+                            y=goals_y,
+                            mode='markers+lines',
+                            name=f"{category} (Mål)",
+                            line=dict(color=colors[color_idx], dash='dot'),
+                            marker=dict(symbol='circle')
+                        ))
+                    
+                    # Plot outcomes for this category
+                    outcomes = cat_df[cat_df["Type"] == "Utfall"].dropna(subset=["Value"])
+                    if not outcomes.empty:
+                        # Convert to native types
+                        outcomes_x = [int(x) for x in outcomes["Week"].tolist()]
+                        outcomes_y = [float(y) for y in outcomes["Value"].tolist()]
+                        
+                        fig.add_trace(go.Scatter(
+                            x=outcomes_x,
+                            y=outcomes_y,
+                            mode='markers+lines',
+                            name=f"{category} (Utfall)",
+                            line=dict(color=colors[color_idx]),
+                            marker=dict(symbol='square')
+                        ))
+                
+                # Update layout
+                fig.update_layout(
+                    title="All Metrics Overview",
+                    xaxis_title="Week",
+                    yaxis_title="Value",
+                    paper_bgcolor="#262730",
+                    plot_bgcolor="#262730",
+                    font=dict(color="white"),
+                    legend=dict(
+                        font=dict(color="white"),
+                        bgcolor="#262730"
+                    )
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
             
-            elif plot_style == "Gauge Charts":
-                # Display metrics as gauge charts
-                metrics_display = visualizer.create_metrics_display()
-                st.plotly_chart(metrics_display, use_container_width=True)
+            elif plot_style == "Category Groups":
+                # Display categories using the visualizer's group plots function
+                if financial_filtered:
+                    st.write("### Financial Metrics")
+                    fig = visualizer.create_category_group_plots(financial_filtered, "Financial Metrics", 
+                                                           figsize=st.session_state.settings['graph_settings']['figsize'],
+                                                           x_range=week_range)
+                    st.pyplot(fig)
+                
+                if productivity_filtered:
+                    st.write("### Productivity Metrics")
+                    fig = visualizer.create_category_group_plots(productivity_filtered, "Productivity Metrics", 
+                                                           figsize=st.session_state.settings['graph_settings']['figsize'],
+                                                           x_range=week_range)
+                    st.pyplot(fig)
+                
+                if content_filtered:
+                    st.write("### Content Metrics")
+                    fig = visualizer.create_category_group_plots(content_filtered, "Content Metrics", 
+                                                           figsize=st.session_state.settings['graph_settings']['figsize'],
+                                                           x_range=week_range)
+                    st.pyplot(fig)
+                    
+                if other_categories:
+                    st.write("### Other Metrics")
+                    fig = visualizer.create_category_group_plots(other_categories, "Other Metrics", 
+                                                           figsize=st.session_state.settings['graph_settings']['figsize'],
+                                                           x_range=week_range)
+                    st.pyplot(fig)
             
-            elif plot_style == "Comparison Charts":
-                # Display comparison charts with achievement percentages
-                comparison_plots = visualizer.create_comparison_plots()
-                for plot in comparison_plots:
-                    st.plotly_chart(plot, use_container_width=True)
+            elif plot_style == "Individual Metrics":
+                # Display each category individually
+                for category in sorted(df["Category"].unique()):
+                    st.write(f"### {category}")
+                    fig = visualizer.create_metric_comparison(category, 
+                                                       figsize=st.session_state.settings['graph_settings']['figsize'],
+                                                       x_range=week_range)
+                    st.pyplot(fig)
+            
+            elif plot_style == "Raw Data":
+                # Display raw data
+                st.dataframe(df.sort_values(["Category", "Type", "Week"]), use_container_width=True)
         
         with tab2:
             if 'selected_category' in locals() and selected_category != "All Categories":
