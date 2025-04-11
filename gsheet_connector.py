@@ -120,8 +120,12 @@ class BalthazarGSheetConnector:
         week_cols = []
         week_numbers = []
         
+        # Debug: Print first few rows
+        for i, row in enumerate(data[:5]):
+            print(f"Row {i}: {row}")
+        
         # Search for the row with week numbers (usually the first or second row)
-        for i, row in enumerate(data[:5]):  # Check first 5 rows
+        for i, row in enumerate(data[:10]):  # Check first 10 rows
             if len(row) > 2:
                 # Try to convert items to integers (week numbers)
                 potential_weeks = []
@@ -130,12 +134,15 @@ class BalthazarGSheetConnector:
                 for j, cell in enumerate(row):
                     if cell and isinstance(cell, (str, int)):
                         try:
-                            week_num = int(str(cell).strip())
+                            cell_str = str(cell).strip()
+                            # Try to convert to integer
+                            week_num = int(cell_str)
                             if 1 <= week_num <= 53:  # Valid week number
                                 if start_col == -1:
                                     start_col = j
                                 potential_weeks.append((j, week_num))
                         except ValueError:
+                            # If not an integer, check if it's a date format
                             pass
                 
                 if len(potential_weeks) >= 2:  # Found at least 2 week numbers
@@ -151,25 +158,29 @@ class BalthazarGSheetConnector:
             if len(data[0]) > 2:
                 week_cols = list(range(2, len(data[0])))
                 week_numbers = list(range(1, len(week_cols) + 1))
+            else:
+                print("Error: Data doesn't have enough columns")
+                return pd.DataFrame()
         
         # Process the data rows
         records = []
-        current_category = None
         skip_rows = week_row_idx + 1  # Skip header rows
         
-        for row_idx, row in enumerate(data):
-            if row_idx < skip_rows or not row or len(row) <= 1:
+        # Process each row in the data
+        row_idx = 0
+        while row_idx < len(data):
+            row = data[row_idx]
+            row_idx += 1
+            
+            if row_idx <= skip_rows or not row or len(row) < 2:
                 continue
             
             # Check if this is a category header or a data row
             category_name = row[0].strip() if row[0] else ""
-            if category_name and category_name != "The Balthazar Project" and not category_name.startswith(("Mål:", "Utfall:")):
-                current_category = category_name
-                print(f"Found category header: {current_category}")
-                continue
-                
-            # Check if this is a data row (Mål or Utfall)
+            
+            # Check if it's a valid row with data
             row_label = row[1].strip() if len(row) > 1 and row[1] else ""
+            
             if not row_label:
                 continue
                 
@@ -181,18 +192,15 @@ class BalthazarGSheetConnector:
                 
                 # Process values for each week
                 for col_idx, week_num in zip(week_cols, week_numbers):
-                    if col_idx < len(row) and row[col_idx]:
+                    if col_idx < len(row) and row[col_idx] and row[col_idx] != '':
                         value = row[col_idx]
-                        if value not in ('', None):
-                            try:
-                                # Handle different number formats
-                                if isinstance(value, str):
-                                    value = value.replace(',', '.').replace(' ', '')
-                                    
-                                if value == '0' or value == 0:
-                                    # Skip explicit zeros as they're often placeholders
-                                    continue
+                        try:
+                            # Handle different number formats
+                            if isinstance(value, str):
+                                value = value.replace(',', '.').replace(' ', '')
                                 
+                            # Convert to float, skip empty cells or explicit '0' values
+                            if value != 0 and value != '0':
                                 numeric_value = float(value)
                                 records.append({
                                     "Date": int(week_num), 
@@ -201,8 +209,8 @@ class BalthazarGSheetConnector:
                                     "Value": numeric_value
                                 })
                                 print(f"  - Added record: Date={week_num}, Category={metric_category}, Type={row_type}, Value={numeric_value}")
-                            except (ValueError, TypeError, IndexError) as e:
-                                print(f"  - Skipping value '{value}': {e}")
+                        except (ValueError, TypeError) as e:
+                            print(f"  - Skipping value '{value}': {e}")
                 
             elif row_label.startswith("Utfall:"):
                 # This is an outcome (Utfall) row
@@ -212,18 +220,15 @@ class BalthazarGSheetConnector:
                 
                 # Process values for each week
                 for col_idx, week_num in zip(week_cols, week_numbers):
-                    if col_idx < len(row) and row[col_idx]:
+                    if col_idx < len(row) and row[col_idx] and row[col_idx] != '':
                         value = row[col_idx]
-                        if value not in ('', None):
-                            try:
-                                # Handle different number formats
-                                if isinstance(value, str):
-                                    value = value.replace(',', '.').replace(' ', '')
-                                    
-                                if value == '0' or value == 0:
-                                    # Skip explicit zeros as they're often placeholders
-                                    continue
+                        try:
+                            # Handle different number formats
+                            if isinstance(value, str):
+                                value = value.replace(',', '.').replace(' ', '')
                                 
+                            # Convert to float, skip empty cells or explicit '0' values
+                            if value != 0 and value != '0':
                                 numeric_value = float(value)
                                 records.append({
                                     "Date": int(week_num), 
@@ -232,7 +237,60 @@ class BalthazarGSheetConnector:
                                     "Value": numeric_value
                                 })
                                 print(f"  - Added record: Date={week_num}, Category={metric_category}, Type={row_type}, Value={numeric_value}")
-                            except (ValueError, TypeError, IndexError) as e:
+                        except (ValueError, TypeError) as e:
+                            print(f"  - Skipping value '{value}': {e}")
+            
+            # Also check for rows without the prefix but matching known metrics
+            else:
+                # Known metrics that might not have prefixes
+                known_metrics = [
+                    "Försäljning SEK", "Utgifter SEK", "Resultat SEK",
+                    "Bokade möten", "Git commits", "Artiklar Hemsida (SEO)",
+                    "Gratis verktyg hemsida (SEO)", "Skickade E-post",
+                    "Färdiga moment produktion", "Långa YT videos", "Korta YT videos"
+                ]
+                
+                if any(metric in row_label for metric in known_metrics):
+                    # Try to determine if it's a goal or outcome based on position
+                    # Typically goals are first, outcomes second
+                    is_goal = True  # Default to goal if we can't tell
+                    
+                    # Check next row if possible
+                    if row_idx + 1 < len(data) and data[row_idx + 1] and len(data[row_idx + 1]) > 1:
+                        next_label = data[row_idx + 1][1].strip() if data[row_idx + 1][1] else ""
+                        if next_label and row_label == next_label:
+                            # This is likely the first of a pair (goal)
+                            is_goal = True
+                        elif row_idx > 0 and data[row_idx - 1] and len(data[row_idx - 1]) > 1:
+                            prev_label = data[row_idx - 1][1].strip() if data[row_idx - 1][1] else ""
+                            if prev_label and row_label == prev_label:
+                                # This is likely the second of a pair (outcome)
+                                is_goal = False
+                    
+                    row_type = "Mål" if is_goal else "Utfall"
+                    metric_category = row_label
+                    print(f"Found {row_type} row for: {metric_category} (inferred)")
+                    
+                    # Process values for each week
+                    for col_idx, week_num in zip(week_cols, week_numbers):
+                        if col_idx < len(row) and row[col_idx] and row[col_idx] != '':
+                            value = row[col_idx]
+                            try:
+                                # Handle different number formats
+                                if isinstance(value, str):
+                                    value = value.replace(',', '.').replace(' ', '')
+                                    
+                                # Convert to float, skip empty cells or explicit '0' values
+                                if value != 0 and value != '0':
+                                    numeric_value = float(value)
+                                    records.append({
+                                        "Date": int(week_num), 
+                                        "Category": metric_category, 
+                                        "Type": row_type, 
+                                        "Value": numeric_value
+                                    })
+                                    print(f"  - Added record: Date={week_num}, Category={metric_category}, Type={row_type}, Value={numeric_value}")
+                            except (ValueError, TypeError) as e:
                                 print(f"  - Skipping value '{value}': {e}")
         
         if not records:
@@ -241,4 +299,9 @@ class BalthazarGSheetConnector:
             
         print(f"Successfully created {len(records)} records")
         df = pd.DataFrame(records)
+        
+        # Debug: Print a sample of the DataFrame
+        print("\nSample of processed data:")
+        print(df.head(10))
+        
         return df 
