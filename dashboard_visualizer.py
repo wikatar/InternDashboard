@@ -187,7 +187,7 @@ class BalthazarVisualizer:
                 ax.text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
                 return fig
                 
-            # Convert values to numeric to ensure they plot correctly
+            # Convert values to numeric to ensure they plot correctly - keep zero values
             cat_df["Value"] = pd.to_numeric(cat_df["Value"], errors="coerce")
             cat_df["Week"] = pd.to_numeric(cat_df["Week"], errors="coerce")
             cat_df = cat_df.dropna(subset=["Value", "Week"])
@@ -212,7 +212,7 @@ class BalthazarVisualizer:
             # Check if this is a "lower is better" metric
             is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
             
-            # Filter non-NA values for goals
+            # Filter non-NA values for goals - include zeros
             goal_df = cat_df[cat_df["Type"] == "Mål"].dropna(subset=["Value"])
             print(f"Goal data: {len(goal_df)} rows")
             if not goal_df.empty:
@@ -225,7 +225,7 @@ class BalthazarVisualizer:
                 goal_x = []
                 goal_y = []
             
-            # Filter non-NA values for outcomes
+            # Filter non-NA values for outcomes - include zeros
             outcome_df = cat_df[cat_df["Type"] == "Utfall"].dropna(subset=["Value"])
             print(f"Outcome data: {len(outcome_df)} rows")
             if not outcome_df.empty:
@@ -289,8 +289,9 @@ class BalthazarVisualizer:
             # Add data point annotations
             if goal_x:
                 for x, y in zip(goal_x, goal_y):
+                    text_val = f"{int(y)}" if y == int(y) else f"{y:.1f}"
                     ax.annotate(
-                        f"{int(y) if y == int(y) else y:.1f}",
+                        text_val,
                         (x, y),
                         textcoords="offset points",
                         xytext=(0, 10),
@@ -303,8 +304,9 @@ class BalthazarVisualizer:
 
             if outcome_x:
                 for x, y in zip(outcome_x, outcome_y):
+                    text_val = f"{int(y)}" if y == int(y) else f"{y:.1f}"
                     ax.annotate(
-                        f"{int(y) if y == int(y) else y:.1f}",
+                        text_val,
                         (x, y),
                         textcoords="offset points",
                         xytext=(0, 10),

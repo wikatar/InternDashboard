@@ -304,21 +304,32 @@ if (uploaded_creds is not None or credentials_json) and fetch_button:
                     datetime.now().strftime("%Y-%m-%d"), 
                     (datetime.now() + timedelta(days=90)).strftime("%Y-%m-%d")
                 )
-                save_success = st.session_state.visualizer.save_to_browser(date_range)
-                config_success = st.session_state.visualizer.save_config(config)
                 
-                if save_success and config_success:
-                    status.update(label="✅ Data fetched and saved successfully!", state="complete")
-                else:
-                    status.update(label="⚠️ Data fetched but couldn't be saved completely", state="error")
+                try:
+                    # First try to save the configuration
+                    config_success = st.session_state.visualizer.save_config(config)
+                    
+                    # Then try to save the data
+                    save_success = st.session_state.visualizer.save_to_browser(date_range)
+                    
+                    if save_success and config_success:
+                        status.update(label="✅ Data fetched and saved successfully!", state="complete")
+                    elif save_success:
+                        status.update(label="✅ Data fetched but config couldn't be saved", state="warning")
+                    elif config_success:
+                        status.update(label="✅ Data fetched but couldn't be saved to browser", state="warning")
+                    else:
+                        status.update(label="✅ Data fetched but nothing could be saved", state="warning")
+                except Exception as e:
+                    status.update(label=f"✅ Data fetched but error saving: {str(e)}", state="warning")
+                    print(f"Error during save: {str(e)}")
                 
                 # Output the structure of the processed data for debugging
-                st.write("---")
-                st.subheader("Data Structure")
-                st.write(f"Categories: {sorted(processed_data['Category'].unique())}")
-                st.write(f"Types: {sorted(processed_data['Type'].unique())}")
-                st.write(f"Weeks: {sorted(processed_data['Date'].unique())}")
-                st.write("---")
+                with st.expander("Data Structure Details", expanded=False):
+                    st.write("### Data Structure")
+                    st.write(f"Categories: {sorted(processed_data['Category'].unique())}")
+                    st.write(f"Types: {sorted(processed_data['Type'].unique())}")
+                    st.write(f"Weeks: {sorted(processed_data['Date'].unique())}")
             else:
                 status.update(label="❌ No data found or processing error", state="error")
                 st.error("The data processing yielded an empty DataFrame. Please check the sheet structure.")
@@ -353,36 +364,37 @@ if 'data' in st.session_state and st.session_state.data is not None:
     if missing_columns:
         st.error(f"Data is missing required columns: {', '.join(missing_columns)}")
     else:
-        # Debug data before conversion
-        st.write("### Debug: Data Summary Before Processing")
-        st.write(f"Data shape: {df.shape}")
-        st.write(f"Data types: {df.dtypes}")
-        st.write(f"Sample data:\n{df.head(3)}")
-        
-        # Convert the data to numeric where appropriate
-        df["Value"] = pd.to_numeric(df["Value"], errors="coerce")
-        df["Date"] = pd.to_numeric(df["Date"], errors="coerce")
-        
-        # Ensure we have a Week column for visualization
-        if "Week" not in df.columns:
-            df["Week"] = df["Date"]
-        
-        # Set Week column to int type for proper display
-        df["Week"] = df["Week"].astype(int)
-        
-        # Drop any rows with NaN values
-        orig_len = len(df)
-        df = df.dropna(subset=["Value", "Date"])
-        if len(df) < orig_len:
-            st.warning(f"Dropped {orig_len - len(df)} rows with invalid values.")
+        # Debug data before conversion - hide in expander
+        with st.expander("Debug Data (Click to expand)", expanded=False):
+            st.write("### Debug: Data Summary Before Processing")
+            st.write(f"Data shape: {df.shape}")
+            st.write(f"Data types: {df.dtypes}")
+            st.write(f"Sample data:\n{df.head(3)}")
             
-        # Debug data after conversion    
-        st.write("### Debug: Data Summary After Processing")
-        st.write(f"Data shape: {df.shape}")
-        st.write(f"Columns: {df.columns.tolist()}")
-        st.write(f"Week values: {sorted(df['Week'].unique())}")
-        st.write(f"Categories: {sorted(df['Category'].unique())}")
-        st.write(f"Types: {sorted(df['Type'].unique())}")
+            # Convert the data to numeric where appropriate
+            df["Value"] = pd.to_numeric(df["Value"], errors="coerce")
+            df["Date"] = pd.to_numeric(df["Date"], errors="coerce")
+            
+            # Ensure we have a Week column for visualization
+            if "Week" not in df.columns:
+                df["Week"] = df["Date"]
+            
+            # Set Week column to int type for proper display
+            df["Week"] = df["Week"].astype(int)
+            
+            # Drop any rows with NaN values
+            orig_len = len(df)
+            df = df.dropna(subset=["Value", "Date"])
+            if len(df) < orig_len:
+                st.warning(f"Dropped {orig_len - len(df)} rows with invalid values.")
+                
+            # Debug data after conversion    
+            st.write("### Debug: Data Summary After Processing")
+            st.write(f"Data shape: {df.shape}")
+            st.write(f"Columns: {df.columns.tolist()}")
+            st.write(f"Week values: {sorted(df['Week'].unique())}")
+            st.write(f"Categories: {sorted(df['Category'].unique())}")
+            st.write(f"Types: {sorted(df['Type'].unique())}")
         
         # Explicitly update the data in session state with processed version
         st.session_state.data = df.copy()
@@ -402,28 +414,40 @@ if 'data' in st.session_state and st.session_state.data is not None:
             st.metric("Total Goals", total_goals)
             st.markdown('</div>', unsafe_allow_html=True)
             
-        # Add clear debugging information
-        st.subheader("Visualization Debug Information")
-        st.write("Data sample:")
-        st.dataframe(df.head(10))
+        with col3:
+            st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+            total_outcomes = len(df[df["Type"] == "Utfall"])
+            st.metric("Total Outcomes", total_outcomes)
+            st.markdown('</div>', unsafe_allow_html=True)
         
-        # Check data types - sometimes visualizations fail due to type issues
-        st.write("Data types:")
-        st.write(df.dtypes)
-        
-        # Check if there are any visualizations
-        st.write("Creating visualizer with data...")
-        visualizer = BalthazarVisualizer(df)
-        
-        # Output category information
-        st.write(f"Detected metrics: {visualizer.metrics}")
-        st.write(f"Detected categories: {visualizer.categories}")
-        
-        # Try to create a test plot for the first category if available
-        if visualizer.categories:
-            st.write(f"Attempting to create plot for {visualizer.categories[0]}...")
-            test_fig = visualizer.create_metric_comparison(visualizer.categories[0])
-            st.pyplot(test_fig)
+        with col4:
+            st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+            weeks = df["Week"].nunique()
+            st.metric("Weeks Tracked", weeks)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+        # Add debug visualization in an expander
+        with st.expander("Visualization Debug (Click to expand)", expanded=False):
+            st.write("Data sample:")
+            st.dataframe(df.head(10))
+            
+            # Check data types - sometimes visualizations fail due to type issues
+            st.write("Data types:")
+            st.write(df.dtypes)
+            
+            # Check if there are any visualizations
+            st.write("Creating visualizer with data...")
+            debug_visualizer = BalthazarVisualizer(df)
+            
+            # Output category information
+            st.write(f"Detected metrics: {debug_visualizer.metrics}")
+            st.write(f"Detected categories: {debug_visualizer.categories}")
+            
+            # Try to create a test plot for the first category if available
+            if debug_visualizer.categories:
+                st.write(f"Attempting to create plot for {debug_visualizer.categories[0]}...")
+                test_fig = debug_visualizer.create_metric_comparison(debug_visualizer.categories[0])
+                st.pyplot(test_fig)
         
         st.markdown("---")
         
@@ -521,17 +545,17 @@ if 'data' in st.session_state and st.session_state.data is not None:
                             cat_df["Value"] = pd.to_numeric(cat_df["Value"], errors="coerce")
                             cat_df["Week"] = pd.to_numeric(cat_df["Week"], errors="coerce")
                             
-                            # Filter relevant data - make sure to only use rows with valid data
+                            # Filter relevant data - include all rows with valid data including zeros
                             goals = cat_df[cat_df["Type"] == "Mål"].copy()
                             goals = goals[(goals["Value"].notna()) & (goals["Week"].notna())]
                             
                             outcomes = cat_df[cat_df["Type"] == "Utfall"].copy()
                             outcomes = outcomes[(outcomes["Value"].notna()) & (outcomes["Week"].notna())]
                             
-                            # Debug info
-                            st.write(f"**Debug info for {category}:**")
-                            st.write(f"- Mål data points: {len(goals)}")
-                            st.write(f"- Utfall data points: {len(outcomes)}")
+                            # Show debug info in a collapsible section
+                            with st.expander(f"Debug info for {category}", expanded=False):
+                                st.write(f"- Mål data points: {len(goals)}")
+                                st.write(f"- Utfall data points: {len(outcomes)}")
                             
                             # Convert to native Python types to avoid PyArrow conversion issues
                             if not goals.empty:
@@ -587,35 +611,35 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                         marker=dict(size=10, symbol="circle")
                                     ))
                                     
-                                # Add values on points if requested
-                                if show_values:
-                                    if goals_x:
-                                        for x, y in zip(goals_x, goals_y):
-                                            fig.add_annotation(
-                                                x=x, y=y,
-                                                text=f"{int(y) if y == int(y) else y:.1f}",
-                                                showarrow=False,
-                                                yshift=15,
-                                                font=dict(color="#00BFFF", size=14),
-                                                bgcolor="rgba(0,0,0,0.5)",
-                                                bordercolor="#00BFFF",
-                                                borderwidth=1,
-                                                borderpad=3
-                                            )
-                                    
-                                    if outcomes_x:
-                                        for x, y in zip(outcomes_x, outcomes_y):
-                                            fig.add_annotation(
-                                                x=x, y=y,
-                                                text=f"{int(y) if y == int(y) else y:.1f}",
-                                                showarrow=False,
-                                                yshift=15,
-                                                font=dict(color="#FF4B4B", size=14),
-                                                bgcolor="rgba(0,0,0,0.5)",
-                                                bordercolor="#FF4B4B",
-                                                borderwidth=1,
-                                                borderpad=3
-                                            )
+                                    # Add values on points if requested
+                                    if show_values:
+                                        if goals_x:
+                                            for x, y in zip(goals_x, goals_y):
+                                                fig.add_annotation(
+                                                    x=x, y=y,
+                                                    text=f"{int(y) if y == int(y) else y:.1f}",
+                                                    showarrow=False,
+                                                    yshift=15,
+                                                    font=dict(color="#00BFFF", size=14),
+                                                    bgcolor="rgba(0,0,0,0.5)",
+                                                    bordercolor="#00BFFF",
+                                                    borderwidth=1,
+                                                    borderpad=3
+                                                )
+                                        
+                                        if outcomes_x:
+                                            for x, y in zip(outcomes_x, outcomes_y):
+                                                fig.add_annotation(
+                                                    x=x, y=y,
+                                                    text=f"{int(y) if y == int(y) else y:.1f}",
+                                                    showarrow=False,
+                                                    yshift=15,
+                                                    font=dict(color="#FF4B4B", size=14),
+                                                    bgcolor="rgba(0,0,0,0.5)",
+                                                    bordercolor="#FF4B4B",
+                                                    borderwidth=1,
+                                                    borderpad=3
+                                                )
                                 
                                 # Check if this is a "lower is better" metric
                                 is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
@@ -758,191 +782,113 @@ if 'data' in st.session_state and st.session_state.data is not None:
                 # Display raw data
                 st.dataframe(df.sort_values(["Category", "Type", "Week"]), use_container_width=True)
         
-        with tab2:
-            if 'selected_category' in locals() and selected_category != "All Categories":
-                # Add chart type selector for individual metrics
-                chart_type = st.radio(
-                    "Chart Type", 
-                    ["Line Chart", "Bar Chart", "Area Chart", "Combo Chart"],
-                    horizontal=True
+        # Add a section for single category selection at the bottom
+        if 'data' in st.session_state and selected_category != "All Categories":
+            st.markdown("---")
+            st.subheader(f"Detailed view for: {selected_category}")
+            
+            # Create individual category visualization with custom settings
+            cat_visualizer = BalthazarVisualizer(df)
+            cat_visualizer.colors = {
+                "Mål": st.session_state.settings['graph_settings']['goal_color'],
+                "Utfall": st.session_state.settings['graph_settings']['outcome_color']
+            }
+            
+            # Get data for the selected category
+            cat_df = df[df["Category"] == selected_category].copy()
+            
+            # Ensure this subset has Week column
+            if "Week" not in cat_df.columns and "Date" in cat_df.columns:
+                cat_df["Week"] = cat_df["Date"]
+            
+            # Check if this is a "lower is better" metric
+            is_lower_better = any(pattern in selected_category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
+            
+            # Filter data but include zero values
+            goals = cat_df[cat_df["Type"] == "Mål"].copy()
+            goals = goals[(goals["Value"].notna())]
+            
+            outcomes = cat_df[cat_df["Type"] == "Utfall"].copy()
+            outcomes = outcomes[(outcomes["Value"].notna())]
+            
+            # Convert to native types
+            if not goals.empty:
+                goals_x = [int(x) for x in goals["Week"].tolist()]
+                goals_y = [float(y) for y in goals["Value"].tolist()]
+            else:
+                goals_x = []
+                goals_y = []
+                
+            if not outcomes.empty:
+                outcomes_x = [int(x) for x in outcomes["Week"].tolist()]
+                outcomes_y = [float(y) for y in outcomes["Value"].tolist()]
+            else:
+                outcomes_x = []
+                outcomes_y = []
+            
+            # Create Plotly figure for the selected category
+            detail_fig = go.Figure()
+            
+            # Add goal trace (if we have data)
+            if goals_x:
+                detail_fig.add_trace(go.Scatter(
+                    x=goals_x, 
+                    y=goals_y,
+                    mode='lines+markers',
+                    name='Mål',
+                    line=dict(color="#00BFFF", dash='dash', width=3),
+                    marker=dict(size=10, symbol="circle")
+                ))
+                
+            # Add outcome trace (if we have data)
+            if outcomes_x:
+                detail_fig.add_trace(go.Scatter(
+                    x=outcomes_x, 
+                    y=outcomes_y,
+                    mode='lines+markers',
+                    name='Utfall',
+                    line=dict(color="#FF4B4B", width=3),
+                    marker=dict(size=10, symbol="circle")
+                ))
+                
+            # Get all weeks
+            all_weeks = sorted(set(goals_x + outcomes_x))
+            if all_weeks:
+                # Update layout
+                min_week = min(all_weeks)
+                max_week = max(all_weeks)
+                detail_fig.update_layout(
+                    title=f"{selected_category} Detail View",
+                    xaxis_title="Week",
+                    yaxis_title="Value" if not is_lower_better else "Value (lower is better)",
+                    paper_bgcolor="#262730",
+                    plot_bgcolor="#262730",
+                    font=dict(color="white", size=14),
+                    height=500,
+                    legend=dict(
+                        font=dict(color="white"),
+                        bgcolor="#262730"
+                    ),
+                    xaxis=dict(
+                        gridcolor="#444", 
+                        range=[min_week-0.5, max_week+0.5],
+                        dtick=1,
+                        tickmode="linear",
+                        title_font=dict(size=14)
+                    ),
+                    yaxis=dict(
+                        gridcolor="#444", 
+                        autorange="reversed" if is_lower_better and invert_metrics else None,
+                        zeroline=True,
+                        zerolinecolor="#888",
+                        zerolinewidth=1,
+                        title_font=dict(size=14)
+                    )
                 )
                 
-                # Create individual category visualization with custom settings
-                visualizer = BalthazarVisualizer(df)
-                visualizer.colors = {
-                    "Mål": st.session_state.settings['graph_settings']['goal_color'],
-                    "Utfall": st.session_state.settings['graph_settings']['outcome_color']
-                }
-                
-                # Get data for the selected category
-                cat_df = df[df["Category"] == selected_category].copy()
-                
-                # Ensure this subset has Week column
-                if "Week" not in cat_df.columns and "Date" in cat_df.columns:
-                    cat_df["Week"] = cat_df["Date"]
-                
-                # Check if this is a "lower is better" metric
-                is_lower_better = any(pattern in selected_category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
-                
-                # Filter data to remove empty or zero values
-                goals = cat_df[cat_df["Type"] == "Mål"].copy()
-                goals = goals[(goals["Value"].notna()) & (goals["Value"] != 0)]
-                
-                outcomes = cat_df[cat_df["Type"] == "Utfall"].copy()
-                outcomes = outcomes[(outcomes["Value"].notna()) & (outcomes["Value"] != 0)]
-                
-                # Get week range
-                all_weeks = sorted(set(goals["Week"].tolist() + outcomes["Week"].tolist()))
-                
-                if not all_weeks:
-                    st.warning(f"No valid data found for {selected_category}")
-                else:
-                    # Create plot based on selected chart type
-                    fig = go.Figure()
-                    
-                    if chart_type == "Line Chart":
-                        if not goals.empty:
-                            fig.add_trace(go.Scatter(
-                                x=goals["Week"], y=goals["Value"],
-                                mode='lines+markers',
-                                name='Mål',
-                                line=dict(color=visualizer.colors["Mål"], dash='dash'),
-                                marker=dict(size=10)
-                            ))
-                            
-                        if not outcomes.empty:
-                            fig.add_trace(go.Scatter(
-                                x=outcomes["Week"], y=outcomes["Value"],
-                                mode='lines+markers',
-                                name='Utfall',
-                                line=dict(color=visualizer.colors["Utfall"]),
-                                marker=dict(size=10)
-                            ))
-                            
-                    elif chart_type == "Bar Chart":
-                        if not goals.empty:
-                            fig.add_trace(go.Bar(
-                                x=goals["Week"], y=goals["Value"],
-                                name='Mål',
-                                marker_color=visualizer.colors["Mål"]
-                            ))
-                            
-                        if not outcomes.empty:
-                            fig.add_trace(go.Bar(
-                                x=outcomes["Week"], y=outcomes["Value"],
-                                name='Utfall',
-                                marker_color=visualizer.colors["Utfall"]
-                            ))
-                        
-                    elif chart_type == "Area Chart":
-                        if not goals.empty:
-                            fig.add_trace(go.Scatter(
-                                x=goals["Week"], y=goals["Value"],
-                                mode='lines',
-                                name='Mål',
-                                line=dict(color=visualizer.colors["Mål"]),
-                                fill='tozeroy'
-                            ))
-                            
-                        if not outcomes.empty:
-                            fig.add_trace(go.Scatter(
-                                x=outcomes["Week"], y=outcomes["Value"],
-                                mode='lines',
-                                name='Utfall',
-                                line=dict(color=visualizer.colors["Utfall"]),
-                                fill='tozeroy'
-                            ))
-                        
-                    elif chart_type == "Combo Chart":
-                        if not goals.empty:
-                            fig.add_trace(go.Bar(
-                                x=goals["Week"], y=goals["Value"],
-                                name='Mål',
-                                marker_color=visualizer.colors["Mål"],
-                                opacity=0.7
-                            ))
-                            
-                        if not outcomes.empty:
-                            fig.add_trace(go.Scatter(
-                                x=outcomes["Week"], y=outcomes["Value"],
-                                mode='lines+markers',
-                                name='Utfall',
-                                line=dict(color=visualizer.colors["Utfall"]),
-                                marker=dict(size=10)
-                            ))
-                    
-                    # Add data labels if requested
-                    if show_values:
-                        if not goals.empty:
-                            for x, y in zip(goals["Week"], goals["Value"]):
-                                fig.add_annotation(
-                                    x=x, y=y,
-                                    text=f"{y}",
-                                    showarrow=False,
-                                    yshift=10,
-                                    font=dict(color=visualizer.colors["Mål"]),
-                                    bgcolor="rgba(255,255,255,0.7)"
-                                )
-                        
-                        if not outcomes.empty:
-                            for x, y in zip(outcomes["Week"], outcomes["Value"]):
-                                fig.add_annotation(
-                                    x=x, y=y,
-                                    text=f"{y}",
-                                    showarrow=False,
-                                    yshift=10,
-                                    font=dict(color=visualizer.colors["Utfall"]),
-                                    bgcolor="rgba(255,255,255,0.7)"
-                                )
-                    
-                    # Find min and max for weeks to properly set the x-axis range
-                    min_week = min(all_weeks) if all_weeks else 1
-                    max_week = max(all_weeks) if all_weeks else 52
-                    
-                    # Update layout
-                    fig.update_layout(
-                        title=f"{selected_category}: Mål vs. Utfall",
-                        xaxis_title="Week",
-                        yaxis_title="Value" if not is_lower_better else "Value (lower is better)",
-                        paper_bgcolor="#262730",
-                        plot_bgcolor="#262730",
-                        font=dict(color="white"),
-                        legend=dict(
-                            font=dict(color="white"),
-                            bgcolor="#262730"
-                        ),
-                        xaxis=dict(
-                            gridcolor="#444", 
-                            range=[min_week-0.5, max_week+0.5],
-                            dtick=1,  # Show every integer tick
-                            tickmode="linear"
-                        ),
-                        yaxis=dict(
-                            gridcolor="#444", 
-                            autorange="reversed" if is_lower_better and invert_metrics else None,
-                            zeroline=True,
-                            zerolinecolor="#888",
-                            zerolinewidth=1
-                        )
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(detail_fig, use_container_width=True)
             else:
-                st.info("Select a specific category from the sidebar to see detailed metrics.")
-        
-        with tab3:
-            # Display raw data
-            st.subheader("Raw Data")
-            st.dataframe(df, use_container_width=True)
-            
-            # Download option
-            csv = df.to_csv(index=False)
-            st.download_button(
-                label="📥 Download data as CSV",
-                data=csv,
-                file_name="balthazar_dashboard_data.csv",
-                mime="text/csv"
-            )
+                st.warning(f"No data available for {selected_category}")
 else:
     # Instructions when no data is loaded
     st.info("Upload your Google API credentials and click 'Fetch Data' to start.")

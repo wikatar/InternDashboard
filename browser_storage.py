@@ -28,18 +28,27 @@ class BrowserStorage:
         
         # Create storage object
         storage_data = {
-            "data": data_df,
+            "data": data_df.copy(),  # Make a copy to avoid reference issues
             "date_range": date_range_str,
             "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
         # Save to pickle file
         try:
+            # Use the highest protocol for better compatibility
             with open(self.data_file, 'wb') as f:
-                pickle.dump(storage_data, f)
-            return True
+                pickle.dump(storage_data, f, protocol=pickle.HIGHEST_PROTOCOL)
+            
+            # Verify the data was saved correctly
+            if os.path.exists(self.data_file) and os.path.getsize(self.data_file) > 0:
+                return True
+            else:
+                print("Warning: Data file was created but appears to be empty.")
+                return False
         except Exception as e:
             print(f"Error saving data: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
         
     def load_data(self):
@@ -87,11 +96,25 @@ class BrowserStorage:
             config: Dictionary containing configuration settings
         """
         try:
+            # Make a copy of the config to avoid reference issues
+            config_copy = {}
+            for key, value in config.items():
+                config_copy[key] = value
+                
+            # Save with the highest protocol for better compatibility
             with open(self.config_file, 'wb') as f:
-                pickle.dump(config, f)
-            return True
+                pickle.dump(config_copy, f, protocol=pickle.HIGHEST_PROTOCOL)
+            
+            # Verify the config was saved correctly
+            if os.path.exists(self.config_file) and os.path.getsize(self.config_file) > 0:
+                return True
+            else:
+                print("Warning: Config file was created but appears to be empty.")
+                return False
         except Exception as e:
             print(f"Error saving config: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return False
         
     def load_config(self):
