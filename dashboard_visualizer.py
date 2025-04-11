@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.figure import Figure
 import numpy as np
+from browser_storage import BrowserStorage
 
 class BalthazarVisualizer:
     def __init__(self, data_df):
@@ -14,6 +15,7 @@ class BalthazarVisualizer:
             data_df: Pandas DataFrame with columns Date, Category, Type, Value
         """
         self.df = data_df
+        self.storage = BrowserStorage()
         
         # Set Seaborn style for dark theme
         sns.set_theme(style="darkgrid")
@@ -324,4 +326,30 @@ class BalthazarVisualizer:
                 x_range=x_range
             )
             
-        return figures 
+        return figures
+        
+    def save_to_browser(self, date_range):
+        """
+        Save current data and date range to browser storage.
+        
+        Args:
+            date_range: Tuple of (start_date, end_date) as datetime objects
+        """
+        self.storage.save_data(self.df, date_range)
+        
+    def load_from_browser(self):
+        """
+        Load data and date range from browser storage.
+        
+        Returns:
+            Tuple of (data_df, date_range) or (None, None) if no data exists
+        """
+        return self.storage.load_data()
+        
+    def clear_browser_data(self):
+        """Clear data from browser storage."""
+        self.storage.clear_data()
+        
+    def has_browser_data(self):
+        """Check if data exists in browser storage."""
+        return self.storage.has_data() 
