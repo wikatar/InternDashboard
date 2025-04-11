@@ -201,43 +201,31 @@ class BalthazarVisualizer:
                 else:
                     weeks = all_weeks
                 
-                # Plot goals first (dotted line)
+                # Check if this is a "lower is better" metric
+                is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower"])
+                
+                # Plot goals (dotted line)
                 goal_df = cat_df[cat_df["Type"] == "Mål"]
                 if not goal_df.empty:
-                    # Ensure we have data points for all weeks
-                    goal_data = pd.DataFrame({"Week": weeks})
-                    goal_data = goal_data.merge(goal_df[["Week", "Value"]], on="Week", how="left")
-                    goal_data["Value"] = goal_data["Value"].fillna(method="ffill").fillna(method="bfill")
-                    
-                    sns.lineplot(
-                        data=goal_data,
-                        x="Week",
-                        y="Value",
+                    axes[i].plot(
+                        goal_df["Week"],
+                        goal_df["Value"],
                         color=self.colors["Mål"],
-                        linestyle=":",  # Dotted line for goals
-                        markers=self.show_markers,
-                        label="Mål",
-                        ax=axes[i],
-                        sort=False  # Prevent automatic sorting
+                        linestyle=":",
+                        marker="o" if self.show_markers else None,
+                        label="Mål"
                     )
                     
-                # Plot outcomes second (solid line)
+                # Plot outcomes (solid line)
                 outcome_df = cat_df[cat_df["Type"] == "Utfall"]
                 if not outcome_df.empty:
-                    # Ensure we have data points for all weeks
-                    outcome_data = pd.DataFrame({"Week": weeks})
-                    outcome_data = outcome_data.merge(outcome_df[["Week", "Value"]], on="Week", how="left")
-                    
-                    sns.lineplot(
-                        data=outcome_data,
-                        x="Week",
-                        y="Value",
+                    axes[i].plot(
+                        outcome_df["Week"],
+                        outcome_df["Value"],
                         color=self.colors["Utfall"],
-                        linestyle="-",  # Solid line for outcomes
-                        markers=self.show_markers,
-                        label="Utfall",
-                        ax=axes[i],
-                        sort=False  # Prevent automatic sorting
+                        linestyle="-",
+                        marker="o" if self.show_markers else None,
+                        label="Utfall"
                     )
                 
                 # Set plot title and labels
@@ -248,6 +236,12 @@ class BalthazarVisualizer:
                 # Format x-axis ticks
                 axes[i].set_xticks(weeks)
                 axes[i].set_xticklabels([f"Week {w}" for w in weeks])
+                
+                # If it's a "lower is better" metric, invert the y-axis
+                if is_lower_better:
+                    axes[i].invert_yaxis()
+                    # Set y-axis label to indicate inversion
+                    axes[i].set_ylabel("Value (lower is better)", color="#FAFAFA")
                 
                 # Add legend
                 axes[i].legend(title="", frameon=True, facecolor="#262730", edgecolor="#666666")
