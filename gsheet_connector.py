@@ -1,5 +1,6 @@
 import gspread
 import pandas as pd
+import re
 from oauth2client.service_account import ServiceAccountCredentials
 
 class BalthazarGSheetConnector:
@@ -82,14 +83,25 @@ class BalthazarGSheetConnector:
             Raw data from Google Sheet as a list of lists
         """
         try:
-            return self.sheet.get(range_name)
+            data = self.sheet.get(range_name)
+            print(f"Successfully fetched {len(data)} rows of data")
+            
+            # Print a sample of the data structure
+            if data and len(data) > 0:
+                print(f"First row structure: {data[0]}")
+                if len(data) > 1:
+                    print(f"Second row structure: {data[1]}")
+            else:
+                print("Warning: No data rows found in the specified range")
+                
+            return data
         except Exception as e:
             print(f"Error fetching data: {e}")
             return []
     
     def process_data(self, data):
         """
-        Process raw sheet data into a structured DataFrame.
+        Process raw sheet data into a structured DataFrame based on the Veckomål structure.
         
         Args:
             data: Raw data from Google Sheet as list of lists
@@ -97,62 +109,70 @@ class BalthazarGSheetConnector:
         Returns:
             Pandas DataFrame with processed data
         """
-        if not data or len(data) < 2:
+        if not data or len(data) < 1:
+            print("Not enough data to process (need at least 1 row)")
             return pd.DataFrame()
             
-        days = data[0][1:]  # ['15', '16', ..., '27']
-        records = []
-        current_section = ""
+        print(f"Processing {len(data)} rows of data")
         
-        for row in data[1:]:
-            if not row:
+        # Based on the prints, we can see that:
+        # 1. Categories are in column 1 (index 1), not column 0
+        # 2. Day values start from column 2 (index 2)
+        
+        # Get columns for days
+        day_columns = list(range(2, 11))  # Columns 2-10 (indices 2-10)
+        days = [str(d) for d in range(1, len(day_columns) + 1)]
+        print(f"Using day columns at positions: {day_columns}")
+        
+        records = []
+        category_pattern = re.compile(r'(Mål|Utfall)[:\s]+(.+)')
+        
+        for row_idx, row in enumerate(data):
+            if not row or len(row) <= 1:
                 continue
                 
-            label = row[0].strip() if row[0] else ""
-            values = row[1:] if len(row) > 1 else []
+            # Get category from column 1
+            category_col = row[1].strip() if len(row) > 1 and row[1] else ""
             
-            # Skip empty rows or rows with no values
-            if not label or all(v == '' for v in values):
-                # Check if this is a section header
-                if label and any(section in label for section in [
-                    "YT", "Balthazar", "E-post", "Antal kunder"
-                ]):
-                    current_section = label.split()[0]  # e.g., "YT", "Website", "E-post"
+            # Skip rows without category information
+            if not category_col:
                 continue
             
-            # Process category and type
-            if label.startswith("Mål:"):
-                category = label[4:].strip()
-                type_ = "Mål"
-            elif label.startswith("Utfall:"):
-                category = label[7:].strip()
-                type_ = "Utfall"
-            else:
-                category = f"{current_section} {label}".strip()
-                type_ = "Utfall"
+            # Check if this is a category row
+            match = category_pattern.match(category_col)
             
-            # Process values for each day
-            # For goals, extend the last value if fewer than days
-            if len(values) < len(days):
-                if type_ == "Mål" and values:
-                    last_value = values[-1]
-                    values = values + [last_value for _ in range(len(days) - len(values))]
-                else:
-                    values = values + ['' for _ in range(len(days) - len(values))]
-            
-            # Create records for each day
-            for day, value in zip(days, values):
-                if day and value not in ('', None):
-                    try:
-                        numeric_value = float(value.replace(',', '.') if isinstance(value, str) else value)
-                        records.append({
-                            "Date": int(day), 
-                            "Category": category, 
-                            "Type": type_, 
-                            "Value": numeric_value
-                        })
-                    except (ValueError, TypeError):
-                        # Skip non-numeric values
-                        pass
+            if match:
+                # This is a category row with Mål/Utfall
+                row_type, category_name = match.groups()
+                current_type = "Mål" if "Mål" in row_type else "Utfall"
+                current_category = category_name.strip()
+                print(f"Row {row_idx}: Found {current_type} for category '{current_category}'")
+                
+                # Process values for this category
+                for day_idx, col_idx in enumerate(day_columns):
+                    if col_idx < len(row):
+                        value = row[col_idx]
+                        if value not in ('', None):
+                            try:
+                                # Handle different number formats
+                                if isinstance(value, str):
+                                    value = value.replace(',', '.').replace(' ', '')
+                                
+                                numeric_value = float(value)
+                                records.append({
+                                    "Date": int(days[day_idx]), 
+                                    "Category": current_category, 
+                                    "Type": current_type, 
+                                    "Value": numeric_value
+                                })
+                                print(f"  - Added record: Date={days[day_idx]}, Category={current_category}, Type={current_type}, Value={numeric_value}")
+                            except (ValueError, TypeError, IndexError) as e:
+                                print(f"  - Skipping value '{value}': {e}")
         
-        return pd.DataFrame(records) 
+        if not records:
+            print("Warning: No valid records found after processing")
+            return pd.DataFrame()
+            
+        print(f"Successfully created {len(records)} records")
+        df = pd.DataFrame(records)
+        return df 
