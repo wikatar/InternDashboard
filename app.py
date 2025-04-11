@@ -752,20 +752,20 @@ if 'data' in st.session_state and st.session_state.data is not None:
                             # Display the figure
                             st.plotly_chart(fig, use_container_width=True)
                             
-                            # Add detailed data points debug info
+                            # Add detailed data points debug info - don't use nested expanders
                             if category == "Försäljning SEK eller högre":
-                                with st.expander("Debug Data", expanded=False):
-                                    st.write("### Goal Data Points")
-                                    if not goal_data.empty:
-                                        st.dataframe(goal_data[["Week", "Value"]])
-                                    else:
-                                        st.write("No goal data")
-                                        
-                                    st.write("### Outcome Data Points")
-                                    if not outcome_data.empty:
-                                        st.dataframe(outcome_data[["Week", "Value"]])
-                                    else:
-                                        st.write("No outcome data")
+                                st.markdown("### Debug Data for Försäljning SEK eller högre")
+                                st.markdown("**Goal Data Points**")
+                                if not goal_data.empty:
+                                    st.dataframe(goal_data[["Week", "Value"]])
+                                else:
+                                    st.write("No goal data")
+                                    
+                                st.markdown("**Outcome Data Points**")
+                                if not outcome_data.empty:
+                                    st.dataframe(outcome_data[["Week", "Value"]])
+                                else:
+                                    st.write("No outcome data")
             
             elif plot_style == "Advanced Line Charts":
                 # Direct plotting implementation for all categories in one chart
