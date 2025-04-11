@@ -59,15 +59,6 @@ class BalthazarVisualizer:
         # Sort by Week and Type to ensure consistent plotting
         self.df = self.df.sort_values(["Week", "Type"])
         
-        # Create a copy of the original values for "lower is better" metrics
-        self.df["Original_Value"] = self.df["Value"]
-        
-        # Handle "lower is better" metrics by inverting their values
-        lower_better_patterns = ["lägre", "mindre", "lower"]
-        for pattern in lower_better_patterns:
-            mask = self.df["Category"].str.contains(pattern, case=False, na=False)
-            self.df.loc[mask, "Value"] = -self.df.loc[mask, "Value"]
-            
     def create_metric_comparison(self, category, figsize=None, x_range=None):
         """
         Create a comparison plot of goals vs. outcomes for a specific category.
@@ -92,9 +83,6 @@ class BalthazarVisualizer:
             ax.text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
             return fig
             
-        # Ensure data is sorted by Week
-        cat_df = cat_df.sort_values("Week")
-        
         # Get all weeks in the data
         all_weeks = sorted(cat_df["Week"].unique())
         
@@ -109,64 +97,29 @@ class BalthazarVisualizer:
         # Check if this is a "lower is better" metric
         is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower"])
         
-        # Plot goals first (dotted line)
+        # Plot goals (dotted line)
         goal_df = cat_df[cat_df["Type"] == "Mål"]
         if not goal_df.empty:
-            # Create a DataFrame with all weeks
-            goal_data = pd.DataFrame({"Week": weeks})
-            goal_data = goal_data.merge(goal_df[["Week", "Value", "Original_Value"]], on="Week", how="left")
+            ax.plot(
+                goal_df["Week"],
+                goal_df["Value"],
+                color=self.colors["Mål"],
+                linestyle=":",
+                marker="o" if self.show_markers else None,
+                label="Mål"
+            )
             
-            # Forward fill missing values, but only within the actual data range
-            first_valid_week = goal_df["Week"].min()
-            last_valid_week = goal_df["Week"].max()
-            
-            # Only fill values between first and last valid weeks
-            mask = (goal_data["Week"] >= first_valid_week) & (goal_data["Week"] <= last_valid_week)
-            goal_data.loc[mask, "Value"] = goal_data.loc[mask, "Value"].fillna(method="ffill")
-            goal_data.loc[mask, "Original_Value"] = goal_data.loc[mask, "Original_Value"].fillna(method="ffill")
-            
-            # Plot only where we have actual values
-            valid_goal_data = goal_data[goal_data["Value"].notna()]
-            if not valid_goal_data.empty:
-                # Use original values for plotting
-                plot_value = "Original_Value" if is_lower_better else "Value"
-                sns.lineplot(
-                    data=valid_goal_data,
-                    x="Week",
-                    y=plot_value,
-                    color=self.colors["Mål"],
-                    linestyle=":",  # Dotted line for goals
-                    markers=self.show_markers,
-                    label="Mål",
-                    ax=ax,
-                    sort=False,  # Prevent automatic sorting
-                    drawstyle='steps-post'  # Use step-style plotting
-                )
-            
-        # Plot outcomes second (solid line)
+        # Plot outcomes (solid line)
         outcome_df = cat_df[cat_df["Type"] == "Utfall"]
         if not outcome_df.empty:
-            # Create a DataFrame with all weeks
-            outcome_data = pd.DataFrame({"Week": weeks})
-            outcome_data = outcome_data.merge(outcome_df[["Week", "Value", "Original_Value"]], on="Week", how="left")
-            
-            # Plot only where we have actual values
-            valid_outcome_data = outcome_data[outcome_data["Value"].notna()]
-            if not valid_outcome_data.empty:
-                # Use original values for plotting
-                plot_value = "Original_Value" if is_lower_better else "Value"
-                sns.lineplot(
-                    data=valid_outcome_data,
-                    x="Week",
-                    y=plot_value,
-                    color=self.colors["Utfall"],
-                    linestyle="-",  # Solid line for outcomes
-                    markers=self.show_markers,
-                    label="Utfall",
-                    ax=ax,
-                    sort=False,  # Prevent automatic sorting
-                    drawstyle='steps-post'  # Use step-style plotting
-                )
+            ax.plot(
+                outcome_df["Week"],
+                outcome_df["Value"],
+                color=self.colors["Utfall"],
+                linestyle="-",
+                marker="o" if self.show_markers else None,
+                label="Utfall"
+            )
         
         # Set plot title and labels
         ax.set_title(f"{category}: Mål vs. Utfall", color="#FFFFFF", fontsize=14)
