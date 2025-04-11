@@ -304,7 +304,7 @@ if (uploaded_creds is not None or credentials_json) and fetch_button:
                 if save_success and config_success:
                     status.update(label="✅ Data fetched and saved successfully!", state="complete")
                 else:
-                    status.update(label="⚠️ Data fetched but couldn't be saved completely", state="warning")
+                    status.update(label="⚠️ Data fetched but couldn't be saved completely", state="error")
             else:
                 status.update(label="❌ No data found or processing error", state="error")
         else:
