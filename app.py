@@ -627,6 +627,31 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                 
                                 outcome_x = outcome_weeks.tolist() if not isinstance(outcome_weeks, list) else outcome_weeks
                                 outcome_y = [0] * len(outcome_weeks)
+                                
+                                # Make sure to actually add the trace to the figure
+                                fig.add_trace(go.Scatter(
+                                    x=outcome_x,
+                                    y=outcome_y,
+                                    mode="lines+markers",
+                                    name="Utfall",
+                                    line=dict(color="#FF4B4B", width=2),
+                                    marker=dict(size=8, symbol="circle")
+                                ))
+                                
+                                # Add zero labels
+                                if show_values:
+                                    for week in outcome_weeks:
+                                        fig.add_annotation(
+                                            x=week,
+                                            y=0,
+                                            text="0",
+                                            showarrow=False,
+                                            yshift=10,
+                                            font=dict(color="#FF4B4B"),
+                                            bgcolor="rgba(0,0,0,0.6)",
+                                            bordercolor="#FF4B4B",
+                                            borderwidth=1
+                                        )
                             elif not outcome_data.empty:
                                 # Sort by week
                                 outcome_data = outcome_data.sort_values("Week")
@@ -692,6 +717,9 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                 all_values.extend(goal_data["Value"].tolist())
                             if not outcome_data.empty:
                                 all_values.extend(outcome_data["Value"].tolist())
+                                
+                            # Ensure we include zero in the values
+                            all_values.append(0)
                                 
                             if all_values:
                                 min_val = min(all_values)
@@ -838,12 +866,11 @@ if 'data' in st.session_state and st.session_state.data is not None:
                 
                 # Update layout
                 fig.update_layout(
-                    title="All Categories Overview",
+                    title="All Categories",
                     xaxis=dict(
                         title="Week",
                         tickmode="linear",
                         dtick=1,
-                        range=[15-0.5, 26+0.5],
                         gridcolor="#444444"
                     ),
                     yaxis=dict(
@@ -853,18 +880,17 @@ if 'data' in st.session_state and st.session_state.data is not None:
                     plot_bgcolor="#262730",
                     paper_bgcolor="#262730",
                     font=dict(color="white"),
+                    showlegend=True,
                     legend=dict(
-                        bordercolor="white",
-                        borderwidth=1,
-                        font=dict(color="white")
+                        bgcolor="#262730",
+                        bordercolor="#444444"
                     ),
-                    height=600
+                    height=600,
+                    margin=dict(l=40, r=40, t=60, b=40)
                 )
                 
-                # Display a caption with the data counts
-                goal_count = len(df[df["Type"] == "Mål"])
-                outcome_count = len(df[df["Type"] == "Utfall"])
-                st.caption(f"Advanced overview with {goal_count} goal data points and {outcome_count} outcome data points across {df['Category'].nunique()} categories")
+                # Force y-axis to include zero for Advanced Line Charts
+                fig.update_yaxes(rangemode="tozero")
                 
                 # Display the figure
                 st.plotly_chart(fig, use_container_width=True)
@@ -946,6 +972,21 @@ if 'data' in st.session_state and st.session_state.data is not None:
                             
                             outcome_x = outcome_weeks.tolist() if not isinstance(outcome_weeks, list) else outcome_weeks
                             outcome_y = [0] * len(outcome_weeks)
+                            
+                            # Make sure to actually add the trace to the figure
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=outcome_x,
+                                    y=outcome_y,
+                                    mode="lines+markers",
+                                    name="Utfall",
+                                    line=dict(color="#FF4B4B"),
+                                    marker=dict(size=6),
+                                    legendgroup="Utfall",
+                                    showlegend=i==0  # Only show legend for first category
+                                ),
+                                row=row, col=col
+                            )
                         elif not outcome_data.empty:
                             # Sort by week
                             outcome_data = outcome_data.sort_values("Week")
@@ -1068,6 +1109,31 @@ if 'data' in st.session_state and st.session_state.data is not None:
                         
                         outcome_x = outcome_weeks.tolist() if not isinstance(outcome_weeks, list) else outcome_weeks
                         outcome_y = [0] * len(outcome_weeks)
+                        
+                        # Make sure to actually add the trace to the figure
+                        fig.add_trace(go.Scatter(
+                            x=outcome_x,
+                            y=outcome_y,
+                            mode="lines+markers",
+                            name="Utfall",
+                            line=dict(color="#FF4B4B", width=2),
+                            marker=dict(size=10, symbol="circle")
+                        ))
+                        
+                        # Add zero labels
+                        if show_values:
+                            for week in outcome_weeks:
+                                fig.add_annotation(
+                                    x=week,
+                                    y=0,
+                                    text="0",
+                                    showarrow=False,
+                                    yshift=10,
+                                    font=dict(color="#FF4B4B"),
+                                    bgcolor="rgba(0,0,0,0.6)",
+                                    bordercolor="#FF4B4B",
+                                    borderwidth=1
+                                )
                     elif not outcome_data.empty:
                         # Sort by week
                         outcome_data = outcome_data.sort_values("Week")
@@ -1131,6 +1197,9 @@ if 'data' in st.session_state and st.session_state.data is not None:
                     if not outcome_data.empty:
                         all_values.extend(outcome_data["Value"].tolist())
                         
+                    # Ensure we include zero in the values
+                    all_values.append(0)
+                    
                     if all_values:
                         min_val = min(all_values)
                         max_val = max(all_values)
@@ -1334,6 +1403,9 @@ if 'data' in st.session_state and st.session_state.data is not None:
                     )
                 )
                 
+                # Set mode to force y-axis to include zero for all charts
+                detail_fig.update_yaxes(rangemode="tozero")
+                
                 st.plotly_chart(detail_fig, use_container_width=True)
             else:
                 st.warning(f"No data available for {selected_category}")
@@ -1383,6 +1455,7 @@ if 'data' in st.session_state and st.session_state.data is not None:
                         <li>This chart is configured to always show the full week range (15-26).</li>
                         <li>Y-axis maximum is set to at least 7000 to properly display the 5000 SEK goal.</li>
                         <li>If no outcome data exists, a zero line will be displayed.</li>
+                        <li>The y-axis is set to always include zero.</li>
                     </ul>
                 </div>
                 """, unsafe_allow_html=True)
