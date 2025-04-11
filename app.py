@@ -356,6 +356,10 @@ if 'data' in st.session_state and st.session_state.data is not None:
         df["Value"] = pd.to_numeric(df["Value"], errors="coerce")
         df["Date"] = pd.to_numeric(df["Date"], errors="coerce")
         
+        # Ensure we have a Week column for visualization
+        if "Week" not in df.columns:
+            df["Week"] = df["Date"]
+        
         # Drop any rows with NaN values
         orig_len = len(df)
         df = df.dropna(subset=["Value", "Date"])
@@ -462,6 +466,10 @@ if 'data' in st.session_state and st.session_state.data is not None:
                         for i, category in enumerate(categories):
                             # Create a direct custom plot for each category
                             cat_df = df[df["Category"] == category].copy()
+                            
+                            # Ensure this subset has Week column
+                            if "Week" not in cat_df.columns and "Date" in cat_df.columns:
+                                cat_df["Week"] = cat_df["Date"]
                             
                             # Filter relevant data
                             goals = cat_df[cat_df["Type"] == "Mål"].copy()
@@ -595,6 +603,10 @@ if 'data' in st.session_state and st.session_state.data is not None:
                 
                 # Get data for the selected category
                 cat_df = df[df["Category"] == selected_category].copy()
+                
+                # Ensure this subset has Week column
+                if "Week" not in cat_df.columns and "Date" in cat_df.columns:
+                    cat_df["Week"] = cat_df["Date"]
                 
                 # Check if this is a "lower is better" metric
                 is_lower_better = any(pattern in selected_category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])

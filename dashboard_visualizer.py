@@ -99,6 +99,9 @@ class BalthazarVisualizer:
             return
             
         try:
+            # Get column names for debugging
+            print(f"Available columns: {self.data.columns.tolist()}")
+            
             # Ensure Date is an integer
             if "Date" not in self.data.columns:
                 print("Warning: 'Date' column not found in data.")
@@ -129,6 +132,8 @@ class BalthazarVisualizer:
                 print(f"Types: {sorted(self.data['Type'].unique())}")
         except Exception as e:
             print(f"Error preparing data: {str(e)}")
+            import traceback
+            traceback.print_exc()
         
     def create_metric_comparison(self, category, figsize=None, x_range=None):
         """
