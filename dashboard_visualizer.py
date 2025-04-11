@@ -278,7 +278,7 @@ class BalthazarVisualizer:
         self.prepare_data()
         
         # Group categories
-        financial = ["Försäljning SEK eller högre", "Utgifter SEK eller lägre"]
+        financial = ["Försäljning SEK eller högre", "Utgifter SEK eller lägre", "Resultat SEK"]
         
         productivity = [
             "Bokade möten", "Git commits", "Artiklar Hemsida (SEO)",
