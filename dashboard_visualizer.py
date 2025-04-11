@@ -46,23 +46,27 @@ class BalthazarVisualizer:
         })
         
     def prepare_data(self):
-        """Prepare data for visualization by adding Month column and sorting."""
+        """Prepare data for visualization by adding Week column and sorting."""
         if self.df.empty:
             return
             
         # Ensure Date is an integer
         self.df["Date"] = pd.to_numeric(self.df["Date"], errors="coerce")
         
-        # Sort by Date
-        self.df = self.df.sort_values("Date")
+        # Convert day numbers to week numbers (assuming days 1-7 are week 1, etc.)
+        self.df["Week"] = ((self.df["Date"] - 1) // 7) + 1
         
-    def create_metric_comparison(self, category, figsize=None):
+        # Sort by Week and Type to ensure consistent plotting
+        self.df = self.df.sort_values(["Week", "Type"])
+        
+    def create_metric_comparison(self, category, figsize=None, x_range=None):
         """
         Create a comparison plot of goals vs. outcomes for a specific category.
         
         Args:
             category: Category name to plot
             figsize: Figure size tuple (width, height)
+            x_range: Tuple of (start_week, end_week) for x-axis range
             
         Returns:
             matplotlib Figure object
@@ -73,30 +77,73 @@ class BalthazarVisualizer:
         fig, ax = plt.subplots(figsize=figsize)
         
         # Filter data for the given category
-        cat_df = self.df[self.df["Category"] == category]
+        cat_df = self.df[self.df["Category"] == category].copy()
         
         if cat_df.empty:
             ax.text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
             return fig
             
-        # Create line plot
-        sns.lineplot(
-            data=cat_df,
-            x="Date",
-            y="Value",
-            hue="Type",
-            palette=self.colors,
-            markers=self.show_markers,
-            ax=ax
-        )
+        # Ensure data is sorted by Week
+        cat_df = cat_df.sort_values("Week")
+        
+        # Get all weeks in the data
+        all_weeks = sorted(cat_df["Week"].unique())
+        
+        # Set x-axis range if specified
+        if x_range:
+            start_week, end_week = x_range
+            cat_df = cat_df[(cat_df["Week"] >= start_week) & (cat_df["Week"] <= end_week)]
+            weeks = list(range(start_week, end_week + 1))
+        else:
+            weeks = all_weeks
+        
+        # Plot goals first (dotted line)
+        goal_df = cat_df[cat_df["Type"] == "Mål"]
+        if not goal_df.empty:
+            # Ensure we have data points for all weeks
+            goal_data = pd.DataFrame({"Week": weeks})
+            goal_data = goal_data.merge(goal_df[["Week", "Value"]], on="Week", how="left")
+            goal_data["Value"] = goal_data["Value"].fillna(method="ffill").fillna(method="bfill")
+            
+            sns.lineplot(
+                data=goal_data,
+                x="Week",
+                y="Value",
+                color=self.colors["Mål"],
+                linestyle=":",  # Dotted line for goals
+                markers=self.show_markers,
+                label="Mål",
+                ax=ax,
+                sort=False  # Prevent automatic sorting
+            )
+            
+        # Plot outcomes second (solid line)
+        outcome_df = cat_df[cat_df["Type"] == "Utfall"]
+        if not outcome_df.empty:
+            # Ensure we have data points for all weeks
+            outcome_data = pd.DataFrame({"Week": weeks})
+            outcome_data = outcome_data.merge(outcome_df[["Week", "Value"]], on="Week", how="left")
+            
+            sns.lineplot(
+                data=outcome_data,
+                x="Week",
+                y="Value",
+                color=self.colors["Utfall"],
+                linestyle="-",  # Solid line for outcomes
+                markers=self.show_markers,
+                label="Utfall",
+                ax=ax,
+                sort=False  # Prevent automatic sorting
+            )
         
         # Set plot title and labels
         ax.set_title(f"{category}: Mål vs. Utfall", color="#FFFFFF", fontsize=14)
-        ax.set_xlabel("Day of Month", color="#FAFAFA")
+        ax.set_xlabel("Week", color="#FAFAFA")
         ax.set_ylabel("Value", color="#FAFAFA")
         
         # Format x-axis ticks
-        ax.set_xticks(cat_df["Date"].unique())
+        ax.set_xticks(weeks)
+        ax.set_xticklabels([f"Week {w}" for w in weeks])
         
         # Add legend
         ax.legend(title="", frameon=True, facecolor="#262730", edgecolor="#666666")
@@ -110,7 +157,7 @@ class BalthazarVisualizer:
         
         return fig
         
-    def create_category_group_plots(self, categories, group_name, figsize=None):
+    def create_category_group_plots(self, categories, group_name, figsize=None, x_range=None):
         """
         Create a multi-plot figure with comparisons for a group of categories.
         
@@ -118,6 +165,7 @@ class BalthazarVisualizer:
             categories: List of category names to include
             group_name: Name of the category group
             figsize: Figure size tuple (width, height)
+            x_range: Tuple of (start_week, end_week) for x-axis range
             
         Returns:
             matplotlib Figure object
@@ -142,37 +190,80 @@ class BalthazarVisualizer:
         for i, category in enumerate(categories):
             if i < len(axes):
                 # Filter data for the given category
-                cat_df = self.df[self.df["Category"] == category]
+                cat_df = self.df[self.df["Category"] == category].copy()
                 
                 if cat_df.empty:
                     axes[i].text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
                     continue
                 
-                # Create line plot
-                sns.lineplot(
-                    data=cat_df,
-                    x="Date",
-                    y="Value",
-                    hue="Type",
-                    palette=self.colors,
-                    markers=self.show_markers,
-                    ax=axes[i]
-                )
+                # Ensure data is sorted by Week
+                cat_df = cat_df.sort_values("Week")
+                
+                # Get all weeks in the data
+                all_weeks = sorted(cat_df["Week"].unique())
+                
+                # Set x-axis range if specified
+                if x_range:
+                    start_week, end_week = x_range
+                    cat_df = cat_df[(cat_df["Week"] >= start_week) & (cat_df["Week"] <= end_week)]
+                    weeks = list(range(start_week, end_week + 1))
+                else:
+                    weeks = all_weeks
+                
+                # Plot goals first (dotted line)
+                goal_df = cat_df[cat_df["Type"] == "Mål"]
+                if not goal_df.empty:
+                    # Ensure we have data points for all weeks
+                    goal_data = pd.DataFrame({"Week": weeks})
+                    goal_data = goal_data.merge(goal_df[["Week", "Value"]], on="Week", how="left")
+                    goal_data["Value"] = goal_data["Value"].fillna(method="ffill").fillna(method="bfill")
+                    
+                    sns.lineplot(
+                        data=goal_data,
+                        x="Week",
+                        y="Value",
+                        color=self.colors["Mål"],
+                        linestyle=":",  # Dotted line for goals
+                        markers=self.show_markers,
+                        label="Mål",
+                        ax=axes[i],
+                        sort=False  # Prevent automatic sorting
+                    )
+                    
+                # Plot outcomes second (solid line)
+                outcome_df = cat_df[cat_df["Type"] == "Utfall"]
+                if not outcome_df.empty:
+                    # Ensure we have data points for all weeks
+                    outcome_data = pd.DataFrame({"Week": weeks})
+                    outcome_data = outcome_data.merge(outcome_df[["Week", "Value"]], on="Week", how="left")
+                    
+                    sns.lineplot(
+                        data=outcome_data,
+                        x="Week",
+                        y="Value",
+                        color=self.colors["Utfall"],
+                        linestyle="-",  # Solid line for outcomes
+                        markers=self.show_markers,
+                        label="Utfall",
+                        ax=axes[i],
+                        sort=False  # Prevent automatic sorting
+                    )
                 
                 # Set plot title and labels
                 axes[i].set_title(category, color="#FFFFFF")
-                axes[i].set_xlabel("Day of Month", color="#FAFAFA")
+                axes[i].set_xlabel("Week", color="#FAFAFA")
                 axes[i].set_ylabel("Value", color="#FAFAFA")
                 
                 # Format x-axis ticks
-                axes[i].set_xticks(cat_df["Date"].unique())
+                axes[i].set_xticks(weeks)
+                axes[i].set_xticklabels([f"Week {w}" for w in weeks])
+                
+                # Add legend
+                axes[i].legend(title="", frameon=True, facecolor="#262730", edgecolor="#666666")
                 
                 # Add grid if enabled
                 if self.show_grid:
                     axes[i].grid(True, linestyle="--", alpha=0.7, color="#444444")
-                
-                # Set legend
-                axes[i].legend(frameon=True, facecolor="#262730", edgecolor="#666666")
         
         # Hide unused subplots
         for j in range(i + 1, len(axes)):
