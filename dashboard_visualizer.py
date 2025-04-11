@@ -44,6 +44,54 @@ class BalthazarVisualizer:
             'legend.title_fontsize': 12
         })
         
+    def _get_metrics(self):
+        """
+        Extract unique metrics from data.
+        
+        Returns:
+            List of unique metric names
+        """
+        if self.data is None or len(self.data) == 0:
+            return []
+        return sorted(self.data["Category"].unique().tolist())
+        
+    def _get_categories(self):
+        """
+        Extract unique categories from data.
+        
+        Returns:
+            List of unique category names
+        """
+        if self.data is None or len(self.data) == 0:
+            return []
+        
+        # Group categories
+        financial = ["Försäljning SEK eller högre", "Utgifter SEK eller lägre", "Resultat SEK"]
+        
+        productivity = [
+            "Bokade möten", "Git commits", "Artiklar Hemsida (SEO)",
+            "Gratis verktyg hemsida (SEO)", "Skickade E-post", 
+            "Färdiga moment produktion"
+        ]
+        
+        content = ["Långa YT videos", "Korta YT videos"]
+        
+        all_categories = []
+        
+        # Only include categories that exist in the data
+        data_categories = set(self.data["Category"].unique())
+        
+        for category in financial + productivity + content:
+            if category in data_categories:
+                all_categories.append(category)
+                
+        # Add any categories not in predefined groups
+        for category in data_categories:
+            if category not in all_categories:
+                all_categories.append(category)
+                
+        return all_categories
+        
     def prepare_data(self):
         """Prepare data for visualization by adding Week column and sorting."""
         if self.data.empty:
