@@ -218,9 +218,6 @@ class BalthazarVisualizer:
                 axes[i].set_xticks(range(min_week, max_week + 1))
                 axes[i].set_xticklabels([f"Week {w}" for w in range(min_week, max_week + 1)])
                 
-                # Set y-axis to start at 0
-                axes[i].set_ylim(bottom=0)
-                
                 # If it's a "lower is better" metric, invert the y-axis
                 if any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower"]):
                     axes[i].invert_yaxis()
