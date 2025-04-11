@@ -7,15 +7,12 @@ import numpy as np
 from browser_storage import BrowserStorage
 
 class BalthazarVisualizer:
-    def __init__(self, data_df):
-        """
-        Initialize the visualizer with a DataFrame containing processed data.
-        
-        Args:
-            data_df: Pandas DataFrame with columns Date, Category, Type, Value
-        """
-        self.df = data_df
+    def __init__(self, data):
+        """Initialize visualizer with data."""
+        self.data = data
         self.storage = BrowserStorage()
+        self.metrics = self._get_metrics() if data is not None else []
+        self.categories = self._get_categories() if data is not None else []
         
         # Set Seaborn style for dark theme
         sns.set_theme(style="darkgrid")
@@ -49,17 +46,17 @@ class BalthazarVisualizer:
         
     def prepare_data(self):
         """Prepare data for visualization by adding Week column and sorting."""
-        if self.df.empty:
+        if self.data.empty:
             return
             
         # Ensure Date is an integer
-        self.df["Date"] = pd.to_numeric(self.df["Date"], errors="coerce")
+        self.data["Date"] = pd.to_numeric(self.data["Date"], errors="coerce")
         
         # Convert day numbers to week numbers (simple integer division)
-        self.df["Week"] = ((self.df["Date"] - 1) // 7) + 1
+        self.data["Week"] = ((self.data["Date"] - 1) // 7) + 1
         
         # Sort by Week and Type to ensure consistent plotting
-        self.df = self.df.sort_values(["Week", "Type"])
+        self.data = self.data.sort_values(["Week", "Type"])
         
     def create_metric_comparison(self, category, figsize=None, x_range=None):
         """
@@ -79,7 +76,7 @@ class BalthazarVisualizer:
         fig, ax = plt.subplots(figsize=figsize)
         
         # Filter data for the given category
-        cat_df = self.df[self.df["Category"] == category].copy()
+        cat_df = self.data[self.data["Category"] == category].copy()
         
         if cat_df.empty:
             ax.text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
@@ -183,7 +180,7 @@ class BalthazarVisualizer:
         for i, category in enumerate(categories):
             if i < len(axes):
                 # Filter data for the given category
-                cat_df = self.df[self.df["Category"] == category].copy()
+                cat_df = self.data[self.data["Category"] == category].copy()
                 
                 if cat_df.empty:
                     axes[i].text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
@@ -262,13 +259,13 @@ class BalthazarVisualizer:
         content = ["Långa YT videos", "Korta YT videos"]
         
         # Define additional statistics groups based on prefix
-        yt_stats = [cat for cat in self.df["Category"].unique() if cat.startswith("YT")]
-        website_stats = [cat for cat in self.df["Category"].unique() if cat.startswith("Balthazar")]
-        email_stats = [cat for cat in self.df["Category"].unique() if cat.startswith("E-post")]
-        customer_stats = [cat for cat in self.df["Category"].unique() if cat.startswith("Antal kunder")]
+        yt_stats = [cat for cat in self.data["Category"].unique() if cat.startswith("YT")]
+        website_stats = [cat for cat in self.data["Category"].unique() if cat.startswith("Balthazar")]
+        email_stats = [cat for cat in self.data["Category"].unique() if cat.startswith("E-post")]
+        customer_stats = [cat for cat in self.data["Category"].unique() if cat.startswith("Antal kunder")]
         
         # Filter out categories that are already in other groups
-        all_categories = set(self.df["Category"].unique())
+        all_categories = set(self.data["Category"].unique())
         already_included = set(financial + productivity + content + yt_stats + website_stats + email_stats + customer_stats)
         other_stats = list(all_categories - already_included)
         
@@ -330,26 +327,53 @@ class BalthazarVisualizer:
         
     def save_to_browser(self, date_range):
         """
-        Save current data and date range to browser storage.
+        Save data and configuration to browser storage.
         
         Args:
-            date_range: Tuple of (start_date, end_date) as datetime objects
+            date_range: Tuple of (start_date, end_date)
         """
-        self.storage.save_data(self.df, date_range)
-        
+        if self.data is not None:
+            self.storage.save_data(self.data, date_range)
+    
     def load_from_browser(self):
         """
-        Load data and date range from browser storage.
+        Load data from browser storage.
         
         Returns:
             Tuple of (data_df, date_range) or (None, None) if no data exists
         """
         return self.storage.load_data()
+    
+    def save_config(self, config):
+        """
+        Save configuration to browser storage.
         
+        Args:
+            config: Dictionary containing configuration settings
+        """
+        self.storage.save_config(config)
+    
+    def load_config(self):
+        """
+        Load configuration from browser storage.
+        
+        Returns:
+            Dictionary containing configuration settings
+        """
+        return self.storage.load_config()
+    
     def clear_browser_data(self):
         """Clear data from browser storage."""
         self.storage.clear_data()
-        
+    
+    def clear_config(self):
+        """Clear configuration from browser storage."""
+        self.storage.clear_config()
+    
     def has_browser_data(self):
         """Check if data exists in browser storage."""
-        return self.storage.has_data() 
+        return self.storage.has_data()
+    
+    def has_config(self):
+        """Check if configuration exists in browser storage."""
+        return self.storage.has_config() 
