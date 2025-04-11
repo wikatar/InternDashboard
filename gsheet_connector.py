@@ -115,57 +115,123 @@ class BalthazarGSheetConnector:
             
         print(f"Processing {len(data)} rows of data")
         
-        # Based on the prints, we can see that:
-        # 1. Categories are in column 1 (index 1), not column 0
-        # 2. Day values start from column 2 (index 2)
+        # Find the header row with week numbers
+        week_row_idx = -1
+        week_cols = []
+        week_numbers = []
         
-        # Get columns for days
-        day_columns = list(range(2, 11))  # Columns 2-10 (indices 2-10)
-        days = [str(d) for d in range(1, len(day_columns) + 1)]
-        print(f"Using day columns at positions: {day_columns}")
+        # Search for the row with week numbers (usually the first or second row)
+        for i, row in enumerate(data[:5]):  # Check first 5 rows
+            if len(row) > 2:
+                # Try to convert items to integers (week numbers)
+                potential_weeks = []
+                start_col = -1
+                
+                for j, cell in enumerate(row):
+                    if cell and isinstance(cell, (str, int)):
+                        try:
+                            week_num = int(str(cell).strip())
+                            if 1 <= week_num <= 53:  # Valid week number
+                                if start_col == -1:
+                                    start_col = j
+                                potential_weeks.append((j, week_num))
+                        except ValueError:
+                            pass
+                
+                if len(potential_weeks) >= 2:  # Found at least 2 week numbers
+                    week_row_idx = i
+                    week_cols = [col for col, _ in potential_weeks]
+                    week_numbers = [week for _, week in potential_weeks]
+                    print(f"Found week numbers in row {i+1}: {week_numbers} at columns {week_cols}")
+                    break
         
+        if week_row_idx == -1:
+            # If we can't find a week row, use a fallback approach assuming columns 2+ are weeks
+            print("Could not find week numbers row, using columns 2+ as default weeks")
+            if len(data[0]) > 2:
+                week_cols = list(range(2, len(data[0])))
+                week_numbers = list(range(1, len(week_cols) + 1))
+        
+        # Process the data rows
         records = []
-        category_pattern = re.compile(r'(Mål|Utfall)[:\s]+(.+)')
+        current_category = None
+        skip_rows = week_row_idx + 1  # Skip header rows
         
         for row_idx, row in enumerate(data):
-            if not row or len(row) <= 1:
-                continue
-                
-            # Get category from column 1
-            category_col = row[1].strip() if len(row) > 1 and row[1] else ""
-            
-            # Skip rows without category information
-            if not category_col:
+            if row_idx < skip_rows or not row or len(row) <= 1:
                 continue
             
-            # Check if this is a category row
-            match = category_pattern.match(category_col)
-            
-            if match:
-                # This is a category row with Mål/Utfall
-                row_type, category_name = match.groups()
-                current_type = "Mål" if "Mål" in row_type else "Utfall"
-                current_category = category_name.strip()
-                print(f"Row {row_idx}: Found {current_type} for category '{current_category}'")
+            # Check if this is a category header or a data row
+            category_name = row[0].strip() if row[0] else ""
+            if category_name and category_name != "The Balthazar Project" and not category_name.startswith(("Mål:", "Utfall:")):
+                current_category = category_name
+                print(f"Found category header: {current_category}")
+                continue
                 
-                # Process values for this category
-                for day_idx, col_idx in enumerate(day_columns):
-                    if col_idx < len(row):
+            # Check if this is a data row (Mål or Utfall)
+            row_label = row[1].strip() if len(row) > 1 and row[1] else ""
+            if not row_label:
+                continue
+                
+            if row_label.startswith("Mål:"):
+                # This is a goal (Mål) row
+                metric_category = row_label.replace("Mål:", "").strip()
+                row_type = "Mål"
+                print(f"Found Goal row for: {metric_category}")
+                
+                # Process values for each week
+                for col_idx, week_num in zip(week_cols, week_numbers):
+                    if col_idx < len(row) and row[col_idx]:
                         value = row[col_idx]
                         if value not in ('', None):
                             try:
                                 # Handle different number formats
                                 if isinstance(value, str):
                                     value = value.replace(',', '.').replace(' ', '')
+                                    
+                                if value == '0' or value == 0:
+                                    # Skip explicit zeros as they're often placeholders
+                                    continue
                                 
                                 numeric_value = float(value)
                                 records.append({
-                                    "Date": int(days[day_idx]), 
-                                    "Category": current_category, 
-                                    "Type": current_type, 
+                                    "Date": int(week_num), 
+                                    "Category": metric_category, 
+                                    "Type": row_type, 
                                     "Value": numeric_value
                                 })
-                                print(f"  - Added record: Date={days[day_idx]}, Category={current_category}, Type={current_type}, Value={numeric_value}")
+                                print(f"  - Added record: Date={week_num}, Category={metric_category}, Type={row_type}, Value={numeric_value}")
+                            except (ValueError, TypeError, IndexError) as e:
+                                print(f"  - Skipping value '{value}': {e}")
+                
+            elif row_label.startswith("Utfall:"):
+                # This is an outcome (Utfall) row
+                metric_category = row_label.replace("Utfall:", "").strip()
+                row_type = "Utfall"
+                print(f"Found Outcome row for: {metric_category}")
+                
+                # Process values for each week
+                for col_idx, week_num in zip(week_cols, week_numbers):
+                    if col_idx < len(row) and row[col_idx]:
+                        value = row[col_idx]
+                        if value not in ('', None):
+                            try:
+                                # Handle different number formats
+                                if isinstance(value, str):
+                                    value = value.replace(',', '.').replace(' ', '')
+                                    
+                                if value == '0' or value == 0:
+                                    # Skip explicit zeros as they're often placeholders
+                                    continue
+                                
+                                numeric_value = float(value)
+                                records.append({
+                                    "Date": int(week_num), 
+                                    "Category": metric_category, 
+                                    "Type": row_type, 
+                                    "Value": numeric_value
+                                })
+                                print(f"  - Added record: Date={week_num}, Category={metric_category}, Type={row_type}, Value={numeric_value}")
                             except (ValueError, TypeError, IndexError) as e:
                                 print(f"  - Skipping value '{value}': {e}")
         

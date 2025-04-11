@@ -100,11 +100,21 @@ class BalthazarVisualizer:
         # Ensure Date is an integer
         self.data["Date"] = pd.to_numeric(self.data["Date"], errors="coerce")
         
-        # Convert day numbers to week numbers (simple integer division)
-        self.data["Week"] = ((self.data["Date"] - 1) // 7) + 1
+        # Date from the Google Sheet should already be the week number (between 1-53)
+        # Just ensure it's called "Week" for consistency in the rest of the code
+        self.data["Week"] = self.data["Date"]
         
         # Sort by Week and Type to ensure consistent plotting
         self.data = self.data.sort_values(["Week", "Type"])
+        
+        # Drop any rows with NaN week values
+        self.data = self.data.dropna(subset=["Week"])
+        
+        # Print data summary for debugging
+        print(f"Prepared data with {len(self.data)} rows")
+        print(f"Week values: {sorted(self.data['Week'].unique())}")
+        print(f"Categories: {sorted(self.data['Category'].unique())}")
+        print(f"Types: {sorted(self.data['Type'].unique())}")
         
     def create_metric_comparison(self, category, figsize=None, x_range=None):
         """

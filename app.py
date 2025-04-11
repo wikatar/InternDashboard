@@ -253,21 +253,21 @@ with st.sidebar:
 
 # Main content
 if (uploaded_creds is not None or credentials_json) and fetch_button:
-    # Save the credentials temporarily
-    temp_cred_path = "temp_credentials.json"
-    
-    if uploaded_creds is not None:
-        with open(temp_cred_path, "wb") as f:
-            f.write(uploaded_creds.getvalue())
-    elif credentials_json:
-        with open(temp_cred_path, "w") as f:
-            f.write(credentials_json)
-            # Update session state
-            st.session_state.credentials_json = credentials_json
+    # Status message
+    status = st.status("Connecting to Google Sheet...")
     
     try:
-        # Status message
-        status = st.status("Connecting to Google Sheet...")
+        # Save the credentials temporarily
+        temp_cred_path = "temp_credentials.json"
+        
+        if uploaded_creds is not None:
+            with open(temp_cred_path, "wb") as f:
+                f.write(uploaded_creds.getvalue())
+        elif credentials_json:
+            with open(temp_cred_path, "w") as f:
+                f.write(credentials_json)
+                # Update session state
+                st.session_state.credentials_json = credentials_json
         
         # Connect to Google Sheet
         connector = BalthazarGSheetConnector(temp_cred_path, sheet_name, worksheet_name)
@@ -280,6 +280,9 @@ if (uploaded_creds is not None or credentials_json) and fetch_button:
             processed_data = connector.process_data(raw_data)
             
             if not processed_data.empty:
+                # Display info about the data being fetched
+                st.info(f"Fetched {len(processed_data)} data points across {processed_data['Category'].nunique()} categories.")
+                
                 # Store data in session state
                 st.session_state.data = processed_data
                 st.session_state.raw_data = raw_data
@@ -307,13 +310,31 @@ if (uploaded_creds is not None or credentials_json) and fetch_button:
                     status.update(label="✅ Data fetched and saved successfully!", state="complete")
                 else:
                     status.update(label="⚠️ Data fetched but couldn't be saved completely", state="error")
+                
+                # Output the structure of the processed data for debugging
+                st.write("---")
+                st.subheader("Data Structure")
+                st.write(f"Categories: {sorted(processed_data['Category'].unique())}")
+                st.write(f"Types: {sorted(processed_data['Type'].unique())}")
+                st.write(f"Weeks: {sorted(processed_data['Date'].unique())}")
+                st.write("---")
             else:
                 status.update(label="❌ No data found or processing error", state="error")
+                st.error("The data processing yielded an empty DataFrame. Please check the sheet structure.")
+                
+                # Help debugging the data structure
+                if raw_data:
+                    st.subheader("Raw Data Preview")
+                    st.write("First few rows of raw data from Google Sheets:")
+                    st.write(raw_data[:5])
         else:
             status.update(label="❌ Failed to connect to Google Sheet", state="error")
     
     except Exception as e:
-        st.error(f"Error: {str(e)}")
+        status.update(label=f"❌ Error: {str(e)}", state="error")
+        st.error(f"Error details: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
     
     finally:
         # Clean up temporary credentials file
@@ -321,7 +342,7 @@ if (uploaded_creds is not None or credentials_json) and fetch_button:
             os.remove(temp_cred_path)
 
 # Display dashboard if data is available
-if 'data' in st.session_state:
+if 'data' in st.session_state and st.session_state.data is not None:
     df = st.session_state.data
     
     # Summary metrics in columns
