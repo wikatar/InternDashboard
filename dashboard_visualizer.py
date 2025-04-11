@@ -118,17 +118,21 @@ class BalthazarVisualizer:
             mask = (goal_data["Week"] >= first_valid_week) & (goal_data["Week"] <= last_valid_week)
             goal_data.loc[mask, "Value"] = goal_data.loc[mask, "Value"].fillna(method="ffill")
             
-            sns.lineplot(
-                data=goal_data[goal_data["Value"].notna()],  # Only plot where we have values
-                x="Week",
-                y="Value",
-                color=self.colors["Mål"],
-                linestyle=":",  # Dotted line for goals
-                markers=self.show_markers,
-                label="Mål",
-                ax=ax,
-                sort=False  # Prevent automatic sorting
-            )
+            # Plot only where we have actual values
+            valid_goal_data = goal_data[goal_data["Value"].notna()]
+            if not valid_goal_data.empty:
+                sns.lineplot(
+                    data=valid_goal_data,
+                    x="Week",
+                    y="Value",
+                    color=self.colors["Mål"],
+                    linestyle=":",  # Dotted line for goals
+                    markers=self.show_markers,
+                    label="Mål",
+                    ax=ax,
+                    sort=False,  # Prevent automatic sorting
+                    drawstyle='steps-post'  # Use step-style plotting
+                )
             
         # Plot outcomes second (solid line)
         outcome_df = cat_df[cat_df["Type"] == "Utfall"]
@@ -137,18 +141,21 @@ class BalthazarVisualizer:
             outcome_data = pd.DataFrame({"Week": weeks})
             outcome_data = outcome_data.merge(outcome_df[["Week", "Value"]], on="Week", how="left")
             
-            # Don't fill missing values for outcomes
-            sns.lineplot(
-                data=outcome_data[outcome_data["Value"].notna()],  # Only plot where we have values
-                x="Week",
-                y="Value",
-                color=self.colors["Utfall"],
-                linestyle="-",  # Solid line for outcomes
-                markers=self.show_markers,
-                label="Utfall",
-                ax=ax,
-                sort=False  # Prevent automatic sorting
-            )
+            # Plot only where we have actual values
+            valid_outcome_data = outcome_data[outcome_data["Value"].notna()]
+            if not valid_outcome_data.empty:
+                sns.lineplot(
+                    data=valid_outcome_data,
+                    x="Week",
+                    y="Value",
+                    color=self.colors["Utfall"],
+                    linestyle="-",  # Solid line for outcomes
+                    markers=self.show_markers,
+                    label="Utfall",
+                    ax=ax,
+                    sort=False,  # Prevent automatic sorting
+                    drawstyle='steps-post'  # Use step-style plotting
+                )
         
         # Set plot title and labels
         ax.set_title(f"{category}: Mål vs. Utfall", color="#FFFFFF", fontsize=14)
@@ -165,6 +172,8 @@ class BalthazarVisualizer:
         # If it's a "lower is better" metric, invert the y-axis
         if is_lower_better:
             ax.invert_yaxis()
+            # Set y-axis label to indicate inversion
+            ax.set_ylabel("Value (lower is better)", color="#FAFAFA")
             
         # Add legend
         ax.legend(title="", frameon=True, facecolor="#262730", edgecolor="#666666")
