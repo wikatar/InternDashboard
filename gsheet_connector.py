@@ -3,16 +3,18 @@ import pandas as pd
 from oauth2client.service_account import ServiceAccountCredentials
 
 class BalthazarGSheetConnector:
-    def __init__(self, credentials_path, sheet_name):
+    def __init__(self, credentials_path, sheet_name, worksheet_name=None):
         """
         Initialize the connector with Google Sheets credentials and sheet name.
         
         Args:
             credentials_path: Path to Google API credentials JSON file
             sheet_name: Name of the Google Sheet to connect to
+            worksheet_name: Name of the specific worksheet/tab to use (optional)
         """
         self.credentials_path = credentials_path
         self.sheet_name = sheet_name
+        self.worksheet_name = worksheet_name
         self.scope = ['https://spreadsheets.google.com/feeds',
                       'https://www.googleapis.com/auth/drive']
         
@@ -23,15 +25,46 @@ class BalthazarGSheetConnector:
                 self.credentials_path, self.scope)
             self.client = gspread.authorize(credentials)
             
-            # Try to open by title - this is the most common way
+            # Check if we can access any sheets first
+            available_sheets = []
             try:
-                self.sheet = self.client.open(self.sheet_name).sheet1
-                return True
-            except gspread.exceptions.SpreadsheetNotFound:
-                # If not found by title, try listing all available sheets and log them
                 available_sheets = [sheet.title for sheet in self.client.openall()]
-                print(f"Available sheets: {available_sheets}")
-                print(f"Sheet '{self.sheet_name}' not found. Please check the exact name.")
+                print(f"Service account can access these sheets: {available_sheets}")
+            except Exception as e:
+                print(f"Error listing available sheets: {e}")
+            
+            # Try to open by title
+            try:
+                self.spreadsheet = self.client.open(self.sheet_name)
+                print(f"Successfully opened Google Sheet: {self.sheet_name}")
+                
+                # Get all worksheet names in this spreadsheet
+                worksheet_names = [ws.title for ws in self.spreadsheet.worksheets()]
+                print(f"Available worksheets in '{self.sheet_name}': {worksheet_names}")
+                
+                # Select the specified worksheet if provided, otherwise use the first one
+                if self.worksheet_name and self.worksheet_name in worksheet_names:
+                    self.sheet = self.spreadsheet.worksheet(self.worksheet_name)
+                    print(f"Using worksheet: {self.worksheet_name}")
+                else:
+                    self.sheet = self.spreadsheet.sheet1
+                    print(f"Using first worksheet: {self.sheet.title}")
+                
+                return True
+                
+            except gspread.exceptions.SpreadsheetNotFound:
+                print(f"Sheet '{self.sheet_name}' not found.")
+                print("Please make sure:")
+                print(f"1. Your Google Sheet is exactly named '{self.sheet_name}'")
+                print(f"2. You've shared it with the service account email in your credentials file")
+                print(f"3. You've given Editor permissions to that email")
+                
+                if not available_sheets:
+                    print("\nThe service account cannot access ANY sheets. Please check sharing permissions.")
+                else:
+                    print(f"\nThe service account can access these sheets: {available_sheets}")
+                    print("Consider using one of these names instead.")
+                
                 return False
                 
         except Exception as e:

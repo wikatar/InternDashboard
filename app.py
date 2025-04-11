@@ -30,8 +30,15 @@ with st.sidebar:
     # Sheet name input
     sheet_name = st.text_input(
         "Google Sheet name", 
-        value="The Balthazar Project Dashboard",
+        value="2025",
         help="The name of your Google Sheet"
+    )
+    
+    # Worksheet name input
+    worksheet_name = st.text_input(
+        "Worksheet/Tab name", 
+        value="Veckomål",
+        help="The name of the specific tab within your Google Sheet"
     )
     
     # Data range input
@@ -69,7 +76,7 @@ if uploaded_creds is not None and fetch_button:
         status = st.status("Connecting to Google Sheet...")
         
         # Connect to Google Sheet
-        connector = BalthazarGSheetConnector(temp_cred_path, sheet_name)
+        connector = BalthazarGSheetConnector(temp_cred_path, sheet_name, worksheet_name)
         
         if connector.connect():
             status.update(label="Fetching data...")
