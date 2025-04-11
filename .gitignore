@@ -47,4 +47,42 @@ ehthumbs.db
 Thumbs.db
 
 # App bundle
-Balthazar Dashboard.app/ 
+Balthazar Dashboard.app/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environment
+venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Streamlit specific
+.streamlit/
+
+# User settings and data
+*.pkl
+google_credentials.json
+temp_credentials.json
+
+# Log files
+*.log
+
+# Temporary files
+.temp/
+tmp/
+.cache/ 
