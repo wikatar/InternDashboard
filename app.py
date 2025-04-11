@@ -523,332 +523,591 @@ if 'data' in st.session_state and st.session_state.data is not None:
                 if other_categories:
                     all_groups.append(("Other Metrics", other_categories))
                     
+                # COMPLETELY NEW IMPLEMENTATION - DIRECT PLOTTING
                 for group_name, categories in all_groups:
                     if not categories:
                         continue
                         
                     with st.expander(group_name, expanded=True):
-                        for i, category in enumerate(categories):
-                            # Create a direct custom plot for each category - IMPROVED CODE
-                            cat_df = df[df["Category"] == category].copy()
+                        for category in categories:
+                            st.write(f"### {category}")
                             
-                            # Skip if no data
-                            if cat_df.empty:
-                                st.warning(f"No data found for category: {category}")
+                            # Filter directly from the raw data
+                            cat_data = df[df["Category"] == category].copy()
+                            
+                            if cat_data.empty:
+                                st.warning(f"No data for {category}")
                                 continue
+                            
+                            # Direct plotting approach
+                            fig = go.Figure()
+                            
+                            # Get goal data
+                            goal_data = cat_data[cat_data["Type"] == "Mål"]
+                            if not goal_data.empty:
+                                # Sort by week
+                                goal_data = goal_data.sort_values("Week")
                                 
-                            # Ensure this subset has Week column
-                            if "Week" not in cat_df.columns and "Date" in cat_df.columns:
-                                cat_df["Week"] = cat_df["Date"]
-                            
-                            # Convert to numeric if needed
-                            cat_df["Value"] = pd.to_numeric(cat_df["Value"], errors="coerce")
-                            cat_df["Week"] = pd.to_numeric(cat_df["Week"], errors="coerce")
-                            
-                            # Filter relevant data - include all rows with valid data including zeros
-                            goals = cat_df[cat_df["Type"] == "Mål"].copy()
-                            goals = goals[(goals["Value"].notna()) & (goals["Week"].notna())]
-                            
-                            outcomes = cat_df[cat_df["Type"] == "Utfall"].copy()
-                            outcomes = outcomes[(outcomes["Value"].notna()) & (outcomes["Week"].notna())]
-                            
-                            # Show debug info directly (not in an expander to avoid nesting)
-                            st.caption(f"**Debug info:** Mål: {len(goals)} points, Utfall: {len(outcomes)} points")
-                            
-                            # Convert to native Python types to avoid PyArrow conversion issues
-                            if not goals.empty:
-                                goals_x = [int(x) for x in goals["Week"].tolist()]
-                                goals_y = [float(y) for y in goals["Value"].tolist()]
-                            else:
-                                goals_x = []
-                                goals_y = []
+                                # Plot goals
+                                fig.add_trace(go.Scatter(
+                                    x=goal_data["Week"].tolist(),
+                                    y=goal_data["Value"].tolist(),
+                                    mode="lines+markers",
+                                    name="Mål",
+                                    line=dict(color="#00BFFF", width=2, dash="dash"),
+                                    marker=dict(size=8, symbol="circle")
+                                ))
                                 
-                            if not outcomes.empty:
-                                outcomes_x = [int(x) for x in outcomes["Week"].tolist()]
-                                outcomes_y = [float(y) for y in outcomes["Value"].tolist()]
-                            else:
-                                outcomes_x = []
-                                outcomes_y = []
+                                # Add labels to points
+                                if show_values:
+                                    for i, row in goal_data.iterrows():
+                                        fig.add_annotation(
+                                            x=row["Week"],
+                                            y=row["Value"],
+                                            text=str(int(row["Value"]) if row["Value"] == int(row["Value"]) else f"{row['Value']:.1f}"),
+                                            showarrow=False,
+                                            yshift=10,
+                                            font=dict(color="#00BFFF"),
+                                            bgcolor="rgba(0,0,0,0.6)",
+                                            bordercolor="#00BFFF",
+                                            borderwidth=1
+                                        )
                             
-                            # Get the weeks
-                            goal_weeks = goals_x
-                            outcome_weeks = outcomes_x
-                            all_weeks = sorted(set(goal_weeks + outcome_weeks))
+                            # Get outcome data
+                            outcome_data = cat_data[cat_data["Type"] == "Utfall"]
+                            # Handle case where outcome data is empty but goals exist
+                            if outcome_data.empty and not goal_data.empty:
+                                # Create synthetic zeros for all weeks with goals
+                                outcome_weeks = goal_data["Week"].unique()
+                                outcome_x = outcome_weeks.tolist()
+                                outcome_y = [0] * len(outcome_weeks)
+                                
+                                fig.add_trace(go.Scatter(
+                                    x=outcome_x,
+                                    y=outcome_y,
+                                    mode="lines+markers",
+                                    name="Utfall",
+                                    line=dict(color="#FF4B4B", width=2),
+                                    marker=dict(size=8, symbol="circle")
+                                ))
+                                
+                                # Add zero labels
+                                if show_values:
+                                    for week in outcome_weeks:
+                                        fig.add_annotation(
+                                            x=week,
+                                            y=0,
+                                            text="0",
+                                            showarrow=False,
+                                            yshift=10,
+                                            font=dict(color="#FF4B4B"),
+                                            bgcolor="rgba(0,0,0,0.6)",
+                                            bordercolor="#FF4B4B",
+                                            borderwidth=1
+                                        )
+                            elif not outcome_data.empty:
+                                # Sort by week
+                                outcome_data = outcome_data.sort_values("Week")
+                                
+                                # Plot outcomes
+                                fig.add_trace(go.Scatter(
+                                    x=outcome_data["Week"].tolist(),
+                                    y=outcome_data["Value"].tolist(),
+                                    mode="lines+markers",
+                                    name="Utfall",
+                                    line=dict(color="#FF4B4B", width=2),
+                                    marker=dict(size=8, symbol="circle")
+                                ))
+                                
+                                # Add labels to points
+                                if show_values:
+                                    for i, row in outcome_data.iterrows():
+                                        fig.add_annotation(
+                                            x=row["Week"],
+                                            y=row["Value"],
+                                            text=str(int(row["Value"]) if row["Value"] == int(row["Value"]) else f"{row['Value']:.1f}"),
+                                            showarrow=False,
+                                            yshift=10,
+                                            font=dict(color="#FF4B4B"),
+                                            bgcolor="rgba(0,0,0,0.6)",
+                                            bordercolor="#FF4B4B",
+                                            borderwidth=1
+                                        )
                             
+                            # Check if this is a "lower is better" metric
+                            is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
+                            
+                            # Set axis ranges
+                            all_weeks = []
+                            if not goal_data.empty:
+                                all_weeks.extend(goal_data["Week"].tolist())
+                            if not outcome_data.empty:
+                                all_weeks.extend(outcome_data["Week"].tolist())
+                            
+                            # Get week range
                             if all_weeks:
-                                # Filter for selected week range
+                                min_week = min(all_weeks)
+                                max_week = max(all_weeks)
+                                
                                 if week_range:
-                                    min_week, max_week = week_range
-                                else:
-                                    # Default to the weeks available in the data
-                                    min_week = min(all_weeks)
-                                    max_week = max(all_weeks)
-                                
-                                # Create figure
-                                fig = go.Figure()
-                                
-                                # Add goal trace (if we have data)
-                                if goals_x:
-                                    fig.add_trace(go.Scatter(
-                                        x=goals_x, 
-                                        y=goals_y,
-                                        mode='lines+markers',
-                                        name='Mål',
-                                        line=dict(color="#00BFFF", dash='dash', width=3),
-                                        marker=dict(size=10, symbol="circle")
-                                    ))
-                                    
-                                # Add outcome trace (if we have data)
-                                if outcomes_x:
-                                    fig.add_trace(go.Scatter(
-                                        x=outcomes_x, 
-                                        y=outcomes_y,
-                                        mode='lines+markers',
-                                        name='Utfall',
-                                        line=dict(color="#FF4B4B", width=3),
-                                        marker=dict(size=10, symbol="circle")
-                                    ))
-                                    
-                                    # Even if we have no data, ensure we have at least one trace
-                                    if not goals_x and not outcomes_x:
-                                        # Add a dummy invisible trace to ensure plot is created
-                                        min_week, max_week = 15, 26  # Using a reasonable default range
-                                        fig.add_trace(go.Scatter(
-                                            x=[min_week, max_week],
-                                            y=[0, 0],
-                                            mode='lines',
-                                            line=dict(color="rgba(0,0,0,0)"),  # Transparent
-                                            showlegend=False
-                                        ))
-                                    
-                                    # Add values on points if requested
-                                    if show_values:
-                                        if goals_x:
-                                            for x, y in zip(goals_x, goals_y):
-                                                fig.add_annotation(
-                                                    x=x, y=y,
-                                                    text=f"{int(y) if y == int(y) else y:.1f}",
-                                                    showarrow=False,
-                                                    yshift=15,
-                                                    font=dict(color="#00BFFF", size=14),
-                                                    bgcolor="rgba(0,0,0,0.5)",
-                                                    bordercolor="#00BFFF",
-                                                    borderwidth=1,
-                                                    borderpad=3
-                                                )
-                                            
-                                            if outcomes_x:
-                                                for x, y in zip(outcomes_x, outcomes_y):
-                                                    fig.add_annotation(
-                                                        x=x, y=y,
-                                                        text=f"{int(y) if y == int(y) else y:.1f}",
-                                                        showarrow=False,
-                                                        yshift=15,
-                                                        font=dict(color="#FF4B4B", size=14),
-                                                        bgcolor="rgba(0,0,0,0.5)",
-                                                        bordercolor="#FF4B4B",
-                                                        borderwidth=1,
-                                                        borderpad=3
-                                                    )
-                                
-                                # Check if this is a "lower is better" metric
-                                is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
-                                
-                                # Update layout
-                                fig.update_layout(
-                                    title=f"{category}",
-                                    xaxis_title="Week",
-                                    yaxis_title="Value" if not is_lower_better else "Value (lower is better)",
-                                    paper_bgcolor="#262730",
-                                    plot_bgcolor="#262730",
-                                    font=dict(color="white", size=14),
-                                    height=400,
-                                    legend=dict(
-                                        font=dict(color="white"),
-                                        bgcolor="#262730"
-                                    ),
-                                    xaxis=dict(
-                                        gridcolor="#444", 
-                                        range=[min_week-0.5, max_week+0.5],
-                                        dtick=1,
-                                        tickmode="linear",
-                                        title_font=dict(size=14)
-                                    ),
-                                    yaxis=dict(
-                                        gridcolor="#444", 
-                                        autorange="reversed" if is_lower_better and invert_metrics else None,
-                                        zeroline=True,
-                                        zerolinecolor="#888",
-                                        zerolinewidth=1,
-                                        title_font=dict(size=14)
-                                    )
-                                )
-                                
-                                # Display a debug message
-                                st.caption(f"Rendering plot for {category} with data: goals={len(goals_x)} points, outcomes={len(outcomes_x)} points")
-                                
-                                # Display the chart
-                                st.plotly_chart(fig, use_container_width=True)
+                                    if week_range[0] <= max_week and week_range[1] >= min_week:
+                                        min_week = max(min_week, week_range[0])
+                                        max_week = min(max_week, week_range[1])
                             else:
-                                st.warning(f"No numeric data for {category}")
+                                # Default to weeks 15-26 if no data
+                                min_week = 15
+                                max_week = 26
+                            
+                            # Update layout
+                            fig.update_layout(
+                                title=f"{category}",
+                                xaxis=dict(
+                                    title="Week",
+                                    tickmode="linear",
+                                    dtick=1,
+                                    range=[min_week-0.5, max_week+0.5],
+                                    gridcolor="#444444"
+                                ),
+                                yaxis=dict(
+                                    title="Value",
+                                    autorange="reversed" if is_lower_better and invert_metrics else None,
+                                    gridcolor="#444444"
+                                ),
+                                plot_bgcolor="#262730",
+                                paper_bgcolor="#262730",
+                                font=dict(color="white"),
+                                showlegend=True,
+                                legend=dict(
+                                    x=0.01,
+                                    y=0.99,
+                                    bordercolor="white",
+                                    borderwidth=1,
+                                    font=dict(color="white")
+                                ),
+                                height=400,
+                                width=None,
+                                margin=dict(l=50, r=50, t=50, b=50)
+                            )
+                            
+                            # Show goal and outcome counts
+                            st.caption(f"Data points: Mål: {len(goal_data)}, Utfall: {len(outcome_data)}")
+                            
+                            # Display the figure
+                            st.plotly_chart(fig, use_container_width=True)
             
             elif plot_style == "Advanced Line Charts":
-                # Create single multi-line chart with all categories
+                # Direct plotting implementation for all categories in one chart
+                
+                # Create the figure
                 fig = go.Figure()
                 
-                all_categories = sorted(df["Category"].unique())
-                colors = px.colors.qualitative.Plotly
-                
-                # Keep track of whether we added any traces
+                # Track if we added any data
                 added_traces = False
                 
-                for i, category in enumerate(all_categories):
-                    cat_df = df[df["Category"] == category].copy()
+                # Get color palette
+                colors = px.colors.qualitative.Plotly
+                
+                # Process each category
+                for i, category in enumerate(sorted(df["Category"].unique())):
+                    # Get color for this category
+                    color = colors[i % len(colors)]
                     
-                    # Get color index with wraparound
-                    color_idx = i % len(colors)
+                    # Get data for this category
+                    cat_data = df[df["Category"] == category]
                     
-                    # Plot goals for this category
-                    goals = cat_df[cat_df["Type"] == "Mål"].dropna(subset=["Value"])
-                    if not goals.empty:
-                        # Convert to native types
-                        goals_x = [int(x) for x in goals["Week"].tolist()]
-                        goals_y = [float(y) for y in goals["Value"].tolist()]
+                    # Skip if no data
+                    if cat_data.empty:
+                        continue
+                    
+                    # Process goal data
+                    goal_data = cat_data[cat_data["Type"] == "Mål"]
+                    if not goal_data.empty:
+                        # Sort by week
+                        goal_data = goal_data.sort_values("Week")
                         
+                        # Add trace
                         fig.add_trace(go.Scatter(
-                            x=goals_x,
-                            y=goals_y,
-                            mode='markers+lines',
+                            x=goal_data["Week"].tolist(),
+                            y=goal_data["Value"].tolist(),
+                            mode="lines+markers",
                             name=f"{category} (Mål)",
-                            line=dict(color=colors[color_idx], dash='dot'),
-                            marker=dict(symbol='circle')
+                            line=dict(color=color, dash="dash"),
+                            marker=dict(size=6)
                         ))
                         added_traces = True
                     
-                    # Plot outcomes for this category
-                    outcomes = cat_df[cat_df["Type"] == "Utfall"].dropna(subset=["Value"])
-                    if not outcomes.empty:
-                        # Convert to native types
-                        outcomes_x = [int(x) for x in outcomes["Week"].tolist()]
-                        outcomes_y = [float(y) for y in outcomes["Value"].tolist()]
+                    # Process outcome data
+                    outcome_data = cat_data[cat_data["Type"] == "Utfall"]
+                    if not outcome_data.empty:
+                        # Sort by week
+                        outcome_data = outcome_data.sort_values("Week")
                         
+                        # Add trace
                         fig.add_trace(go.Scatter(
-                            x=outcomes_x,
-                            y=outcomes_y,
-                            mode='markers+lines',
+                            x=outcome_data["Week"].tolist(),
+                            y=outcome_data["Value"].tolist(),
+                            mode="lines+markers",
                             name=f"{category} (Utfall)",
-                            line=dict(color=colors[color_idx]),
-                            marker=dict(symbol='square')
+                            line=dict(color=color),
+                            marker=dict(size=6, symbol="square")
                         ))
                         added_traces = True
                 
-                # If no traces were added, add a dummy invisible trace
+                # If no traces were added, add a dummy trace
                 if not added_traces:
-                    min_week, max_week = 15, 26  # Using a reasonable default range
                     fig.add_trace(go.Scatter(
-                        x=[min_week, max_week],
+                        x=[15, 26],
                         y=[0, 0],
-                        mode='lines',
-                        line=dict(color="rgba(0,0,0,0)"),  # Transparent
+                        mode="lines",
+                        line=dict(color="rgba(0,0,0,0)"),
                         showlegend=False
                     ))
-                    st.warning("No data available for plotting in Advanced Line Charts view")
+                    st.warning("No data available for visualization")
                 
                 # Update layout
                 fig.update_layout(
-                    title="All Metrics Overview",
-                    xaxis_title="Week",
-                    yaxis_title="Value",
-                    paper_bgcolor="#262730",
-                    plot_bgcolor="#262730",
-                    font=dict(color="white"),
-                    legend=dict(
-                        font=dict(color="white"),
-                        bgcolor="#262730"
-                    ),
+                    title="All Categories Overview",
                     xaxis=dict(
-                        gridcolor="#444", 
-                        range=[15, 27],  # Use the actual range from the data
+                        title="Week",
+                        tickmode="linear",
                         dtick=1,
-                        tickmode="linear"
+                        range=[15-0.5, 26+0.5],
+                        gridcolor="#444444"
                     ),
                     yaxis=dict(
-                        gridcolor="#444"
-                    )
+                        title="Value",
+                        gridcolor="#444444"
+                    ),
+                    plot_bgcolor="#262730",
+                    paper_bgcolor="#262730",
+                    font=dict(color="white"),
+                    legend=dict(
+                        bordercolor="white",
+                        borderwidth=1,
+                        font=dict(color="white")
+                    ),
+                    height=600
                 )
                 
-                # Add debug information
-                st.caption(f"Advanced Line Charts - Categories: {len(all_categories)}, Data points: {len(df)}")
+                # Display a caption with the data counts
+                goal_count = len(df[df["Type"] == "Mål"])
+                outcome_count = len(df[df["Type"] == "Utfall"])
+                st.caption(f"Advanced overview with {goal_count} goal data points and {outcome_count} outcome data points across {df['Category'].nunique()} categories")
                 
-                # Display the chart
+                # Display the figure
                 st.plotly_chart(fig, use_container_width=True)
             
             elif plot_style == "Category Groups":
-                # Display categories using the visualizer's group plots function
-                if financial_filtered:
-                    st.write("### Financial Metrics")
-                    try:
-                        fig = visualizer.create_category_group_plots(financial_filtered, "Financial Metrics", 
-                                                               figsize=st.session_state.settings['graph_settings']['figsize'],
-                                                               x_range=week_range)
-                        st.pyplot(fig)
-                        st.caption(f"Rendered financial metrics: {', '.join(financial_filtered)}")
-                    except Exception as e:
-                        st.error(f"Error rendering financial metrics: {str(e)}")
+                # Direct implementation of category groups using plotly
                 
-                if productivity_filtered:
-                    st.write("### Productivity Metrics")
-                    try:
-                        fig = visualizer.create_category_group_plots(productivity_filtered, "Productivity Metrics", 
-                                                               figsize=st.session_state.settings['graph_settings']['figsize'],
-                                                               x_range=week_range)
-                        st.pyplot(fig)
-                        st.caption(f"Rendered productivity metrics: {', '.join(productivity_filtered)}")
-                    except Exception as e:
-                        st.error(f"Error rendering productivity metrics: {str(e)}")
-                
-                if content_filtered:
-                    st.write("### Content Metrics")
-                    try:
-                        fig = visualizer.create_category_group_plots(content_filtered, "Content Metrics", 
-                                                               figsize=st.session_state.settings['graph_settings']['figsize'],
-                                                               x_range=week_range)
-                        st.pyplot(fig)
-                        st.caption(f"Rendered content metrics: {', '.join(content_filtered)}")
-                    except Exception as e:
-                        st.error(f"Error rendering content metrics: {str(e)}")
+                # Process each group
+                for group_name, categories in [
+                    ("Financial Metrics", financial_filtered),
+                    ("Productivity Metrics", productivity_filtered),
+                    ("Content Metrics", content_filtered),
+                    ("Other Metrics", other_categories) if other_categories else (None, [])
+                ]:
+                    if not categories:
+                        continue
+                        
+                    st.write(f"### {group_name}")
                     
-                if other_categories:
-                    st.write("### Other Metrics")
-                    try:
-                        fig = visualizer.create_category_group_plots(other_categories, "Other Metrics", 
-                                                               figsize=st.session_state.settings['graph_settings']['figsize'],
-                                                               x_range=week_range)
-                        st.pyplot(fig)
-                        st.caption(f"Rendered other metrics: {', '.join(other_categories)}")
-                    except Exception as e:
-                        st.error(f"Error rendering other metrics: {str(e)}")
+                    # Calculate grid layout
+                    n_cats = len(categories)
+                    n_cols = min(2, n_cats)
+                    n_rows = (n_cats + n_cols - 1) // n_cols
+                    
+                    # Create subplots
+                    fig = make_subplots(
+                        rows=n_rows, 
+                        cols=n_cols,
+                        subplot_titles=categories,
+                        vertical_spacing=0.1
+                    )
+                    
+                    # Process each category
+                    for i, category in enumerate(categories):
+                        row = i // n_cols + 1
+                        col = i % n_cols + 1
+                        
+                        # Get data for this category
+                        cat_data = df[df["Category"] == category]
+                        
+                        # Skip if no data
+                        if cat_data.empty:
+                            continue
+                        
+                        # Check if this is a "lower is better" metric
+                        is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
+                        
+                        # Process goal data
+                        goal_data = cat_data[cat_data["Type"] == "Mål"]
+                        if not goal_data.empty:
+                            # Sort by week
+                            goal_data = goal_data.sort_values("Week")
+                            
+                            # Add trace
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=goal_data["Week"].tolist(),
+                                    y=goal_data["Value"].tolist(),
+                                    mode="lines+markers",
+                                    name="Mål",
+                                    line=dict(color="#00BFFF", dash="dash"),
+                                    marker=dict(size=6),
+                                    legendgroup="Mål",
+                                    showlegend=i==0  # Only show legend for first category
+                                ),
+                                row=row, col=col
+                            )
+                            
+                        # Process outcome data
+                        outcome_data = cat_data[cat_data["Type"] == "Utfall"]
+                        # Handle case where outcome data is empty but goals exist
+                        if outcome_data.empty and not goal_data.empty:
+                            # Create synthetic zeros for all weeks with goals
+                            outcome_weeks = goal_data["Week"].unique()
+                            outcome_x = outcome_weeks.tolist()
+                            outcome_y = [0] * len(outcome_weeks)
+                            
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=outcome_x,
+                                    y=outcome_y,
+                                    mode="lines+markers",
+                                    name="Utfall",
+                                    line=dict(color="#FF4B4B"),
+                                    marker=dict(size=6),
+                                    legendgroup="Utfall",
+                                    showlegend=i==0  # Only show legend for first category
+                                ),
+                                row=row, col=col
+                            )
+                        elif not outcome_data.empty:
+                            # Sort by week
+                            outcome_data = outcome_data.sort_values("Week")
+                            
+                            # Add trace
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=outcome_data["Week"].tolist(),
+                                    y=outcome_data["Value"].tolist(),
+                                    mode="lines+markers",
+                                    name="Utfall",
+                                    line=dict(color="#FF4B4B"),
+                                    marker=dict(size=6),
+                                    legendgroup="Utfall",
+                                    showlegend=i==0  # Only show legend for first category
+                                ),
+                                row=row, col=col
+                            )
+                        
+                        # Update axes
+                        fig.update_xaxes(
+                            title_text="Week",
+                            row=row, col=col,
+                            tickmode="linear",
+                            dtick=2
+                        )
+                        
+                        if is_lower_better and invert_metrics:
+                            fig.update_yaxes(
+                                title_text="Value",
+                                autorange="reversed",
+                                row=row, col=col
+                            )
+                        else:
+                            fig.update_yaxes(
+                                title_text="Value",
+                                row=row, col=col
+                            )
+                    
+                    # Update layout
+                    fig.update_layout(
+                        title=f"{group_name} Overview",
+                        height=300 * n_rows,
+                        showlegend=True,
+                        legend=dict(
+                            orientation="h",
+                            yanchor="bottom",
+                            y=1.02,
+                            xanchor="right",
+                            x=1
+                        ),
+                        plot_bgcolor="#262730",
+                        paper_bgcolor="#262730",
+                        font=dict(color="white")
+                    )
+                    
+                    # Display the figure
+                    st.plotly_chart(fig, use_container_width=True)
             
             elif plot_style == "Individual Metrics":
-                # Display each category individually
+                # Direct implementation of individual metrics using plotly
                 for category in sorted(df["Category"].unique()):
                     st.write(f"### {category}")
-                    try:
-                        # Check if there is any data for this category
-                        cat_df = df[df["Category"] == category]
-                        goals_count = len(cat_df[cat_df["Type"] == "Mål"])
-                        outcomes_count = len(cat_df[cat_df["Type"] == "Utfall"])
+                    
+                    # Get data for this category
+                    cat_data = df[df["Category"] == category]
+                    
+                    # Skip if no data
+                    if cat_data.empty:
+                        st.warning(f"No data for {category}")
+                        continue
+                    
+                    # Create figure
+                    fig = go.Figure()
+                    
+                    # Check if this is a "lower is better" metric
+                    is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
+                    
+                    # Process goal data
+                    goal_data = cat_data[cat_data["Type"] == "Mål"]
+                    if not goal_data.empty:
+                        # Sort by week
+                        goal_data = goal_data.sort_values("Week")
                         
-                        # Add debug information
-                        st.caption(f"Data points: Goals = {goals_count}, Outcomes = {outcomes_count}")
+                        # Add trace
+                        fig.add_trace(go.Scatter(
+                            x=goal_data["Week"].tolist(),
+                            y=goal_data["Value"].tolist(),
+                            mode="lines+markers",
+                            name="Mål",
+                            line=dict(color="#00BFFF", dash="dash", width=2),
+                            marker=dict(size=10, symbol="circle")
+                        ))
                         
-                        # Create the plot
-                        fig = visualizer.create_metric_comparison(category, 
-                                                           figsize=st.session_state.settings['graph_settings']['figsize'],
-                                                           x_range=week_range)
-                        st.pyplot(fig)
-                    except Exception as e:
-                        st.error(f"Error rendering plot for {category}: {str(e)}")
+                        # Add labels
+                        if show_values:
+                            for i, row in goal_data.iterrows():
+                                fig.add_annotation(
+                                    x=row["Week"],
+                                    y=row["Value"],
+                                    text=str(int(row["Value"]) if row["Value"] == int(row["Value"]) else f"{row['Value']:.1f}"),
+                                    showarrow=False,
+                                    yshift=10,
+                                    font=dict(color="#00BFFF"),
+                                    bgcolor="rgba(0,0,0,0.6)",
+                                    bordercolor="#00BFFF",
+                                    borderwidth=1
+                                )
+                    
+                    # Process outcome data
+                    outcome_data = cat_data[cat_data["Type"] == "Utfall"]
+                    # Handle case where outcome data is empty but goals exist
+                    if outcome_data.empty and not goal_data.empty:
+                        # Create synthetic zeros for all weeks with goals
+                        outcome_weeks = goal_data["Week"].unique()
+                        outcome_x = outcome_weeks.tolist()
+                        outcome_y = [0] * len(outcome_weeks)
+                        
+                        fig.add_trace(go.Scatter(
+                            x=outcome_x,
+                            y=outcome_y,
+                            mode="lines+markers",
+                            name="Utfall",
+                            line=dict(color="#FF4B4B", width=2),
+                            marker=dict(size=10, symbol="circle")
+                        ))
+                        
+                        # Add zero labels
+                        if show_values:
+                            for week in outcome_weeks:
+                                fig.add_annotation(
+                                    x=week,
+                                    y=0,
+                                    text="0",
+                                    showarrow=False,
+                                    yshift=10,
+                                    font=dict(color="#FF4B4B"),
+                                    bgcolor="rgba(0,0,0,0.6)",
+                                    bordercolor="#FF4B4B",
+                                    borderwidth=1
+                                )
+                    elif not outcome_data.empty:
+                        # Sort by week
+                        outcome_data = outcome_data.sort_values("Week")
+                        
+                        # Add trace
+                        fig.add_trace(go.Scatter(
+                            x=outcome_data["Week"].tolist(),
+                            y=outcome_data["Value"].tolist(),
+                            mode="lines+markers",
+                            name="Utfall",
+                            line=dict(color="#FF4B4B", width=2),
+                            marker=dict(size=10, symbol="circle")
+                        ))
+                        
+                        # Add labels
+                        if show_values:
+                            for i, row in outcome_data.iterrows():
+                                fig.add_annotation(
+                                    x=row["Week"],
+                                    y=row["Value"],
+                                    text=str(int(row["Value"]) if row["Value"] == int(row["Value"]) else f"{row['Value']:.1f}"),
+                                    showarrow=False,
+                                    yshift=10,
+                                    font=dict(color="#FF4B4B"),
+                                    bgcolor="rgba(0,0,0,0.6)",
+                                    bordercolor="#FF4B4B",
+                                    borderwidth=1
+                                )
+                    
+                    # Set axis ranges
+                    all_weeks = []
+                    if not goal_data.empty:
+                        all_weeks.extend(goal_data["Week"].tolist())
+                    if not outcome_data.empty:
+                        all_weeks.extend(outcome_data["Week"].tolist())
+                    
+                    # Get week range
+                    if all_weeks:
+                        min_week = min(all_weeks)
+                        max_week = max(all_weeks)
+                        
+                        if week_range:
+                            if week_range[0] <= max_week and week_range[1] >= min_week:
+                                min_week = max(min_week, week_range[0])
+                                max_week = min(max_week, week_range[1])
+                    else:
+                        # Default to weeks 15-26 if no data
+                        min_week = 15
+                        max_week = 26
+                    
+                    # Update layout
+                    fig.update_layout(
+                        title=f"{category} Detail View",
+                        xaxis=dict(
+                            title="Week",
+                            tickmode="linear",
+                            dtick=1,
+                            range=[min_week-0.5, max_week+0.5],
+                            gridcolor="#444444"
+                        ),
+                        yaxis=dict(
+                            title="Value" if not is_lower_better else "Value (lower is better)",
+                            autorange="reversed" if is_lower_better and invert_metrics else None,
+                            gridcolor="#444444"
+                        ),
+                        plot_bgcolor="#262730",
+                        paper_bgcolor="#262730",
+                        font=dict(color="white"),
+                        showlegend=True,
+                        legend=dict(
+                            x=0.01,
+                            y=0.99,
+                            bordercolor="white",
+                            borderwidth=1,
+                            font=dict(color="white")
+                        ),
+                        height=400
+                    )
+                    
+                    # Display data counts
+                    st.caption(f"Data points: Mål: {len(goal_data)}, Utfall: {len(outcome_data)}")
+                    
+                    # Display the figure
+                    st.plotly_chart(fig, use_container_width=True)
             
             elif plot_style == "Raw Data":
                 # Display raw data
@@ -897,6 +1156,11 @@ if 'data' in st.session_state and st.session_state.data is not None:
             else:
                 outcomes_x = []
                 outcomes_y = []
+                
+                # If no outcomes but goals exist, create synthetic zeros
+                if goals_x:
+                    outcomes_x = goals_x.copy()
+                    outcomes_y = [0] * len(goals_x)
             
             # Create Plotly figure for the selected category
             detail_fig = go.Figure()
