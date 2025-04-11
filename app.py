@@ -110,6 +110,29 @@ with st.sidebar:
     fetch_button = st.button("Fetch Data", type="primary")
     
     st.markdown("---")
+    st.markdown("### Week Range Selection")
+    
+    # Week range selector - always visible
+    col1, col2 = st.columns(2)
+    with col1:
+        start_week = st.number_input(
+            "Start Week",
+            value=1,  # Default to week 1
+            key="start_week",
+            help="Enter the starting week number"
+        )
+    with col2:
+        end_week = st.number_input(
+            "End Week",
+            value=4,  # Default to week 4
+            key="end_week",
+            help="Enter the ending week number"
+        )
+    
+    # Store week range in session state
+    st.session_state.week_range = (start_week, end_week)
+    
+    st.markdown("---")
     st.markdown("### Graph Settings")
     
     # Graph customization options
@@ -140,34 +163,9 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### Visualization Options")
     
-    # Week range selector and category selections
+    # Category selections
     if 'data' in st.session_state:
         df = st.session_state.data
-        
-        # Calculate available weeks
-        df["Week"] = ((df["Date"] - 1) // 7) + 1
-        available_weeks = sorted(df["Week"].unique())
-        
-        if available_weeks:
-            min_week = int(min(available_weeks))
-            max_week = int(max(available_weeks))
-            
-            # If we only have one week, just display it
-            if min_week == max_week:
-                st.markdown(f"#### Current Week: {min_week}")
-                st.session_state.week_range = (min_week, min_week)
-            else:
-                st.markdown("#### Week Range")
-                # Use a slider for better UX
-                week_range = st.slider(
-                    "Select week range",
-                    min_value=min_week,
-                    max_value=max_week,
-                    value=(min_week, max_week),
-                    key="week_range_slider"
-                )
-                st.session_state.week_range = week_range
-        
         all_categories = sorted(df["Category"].unique())
         selected_category = st.selectbox(
             "View specific category",
