@@ -95,26 +95,40 @@ class BalthazarVisualizer:
     def prepare_data(self):
         """Prepare data for visualization by adding Week column and sorting."""
         if self.data is None or self.data.empty:
+            print("Data is None or empty, skipping preparation.")
             return
             
-        # Ensure Date is an integer
-        self.data["Date"] = pd.to_numeric(self.data["Date"], errors="coerce")
-        
-        # Date from the Google Sheet should already be the week number (between 1-53)
-        # Just ensure it's called "Week" for consistency in the rest of the code
-        self.data["Week"] = self.data["Date"]
-        
-        # Sort by Week and Type to ensure consistent plotting
-        self.data = self.data.sort_values(["Week", "Type"])
-        
-        # Drop any rows with NaN week values
-        self.data = self.data.dropna(subset=["Week"])
-        
-        # Print data summary for debugging
-        print(f"Prepared data with {len(self.data)} rows")
-        print(f"Week values: {sorted(self.data['Week'].unique())}")
-        print(f"Categories: {sorted(self.data['Category'].unique())}")
-        print(f"Types: {sorted(self.data['Type'].unique())}")
+        try:
+            # Ensure Date is an integer
+            if "Date" not in self.data.columns:
+                print("Warning: 'Date' column not found in data.")
+                return
+                
+            self.data["Date"] = pd.to_numeric(self.data["Date"], errors="coerce")
+            
+            # Date from the Google Sheet should already be the week number (between 1-53)
+            # Just ensure it's called "Week" for consistency in the rest of the code
+            self.data["Week"] = self.data["Date"]
+            
+            # Sort by Week and Type to ensure consistent plotting
+            if "Type" in self.data.columns:
+                self.data = self.data.sort_values(["Week", "Type"])
+            else:
+                print("Warning: 'Type' column not found, sorting only by Week.")
+                self.data = self.data.sort_values(["Week"])
+            
+            # Drop any rows with NaN week values
+            self.data = self.data.dropna(subset=["Week"])
+            
+            # Print data summary for debugging
+            print(f"Prepared data with {len(self.data)} rows")
+            print(f"Week values: {sorted(self.data['Week'].unique())}")
+            if "Category" in self.data.columns:
+                print(f"Categories: {sorted(self.data['Category'].unique())}")
+            if "Type" in self.data.columns:
+                print(f"Types: {sorted(self.data['Type'].unique())}")
+        except Exception as e:
+            print(f"Error preparing data: {str(e)}")
         
     def create_metric_comparison(self, category, figsize=None, x_range=None):
         """
@@ -501,35 +515,166 @@ class BalthazarVisualizer:
             )
             return fig
             
-        # Prepare data
-        self.prepare_data()
-        
-        # Get latest week data
-        latest_week = self.data["Week"].max()
-        latest_data = self.data[self.data["Week"] == latest_week]
-        
-        # Get goal and outcome pairs
-        metrics = []
-        for category in latest_data["Category"].unique():
-            cat_data = latest_data[latest_data["Category"] == category]
-            goal = cat_data[cat_data["Type"] == "Mål"]["Value"].values
-            outcome = cat_data[cat_data["Type"] == "Utfall"]["Value"].values
+        try:
+            # Prepare data
+            self.prepare_data()
             
-            goal_val = None if len(goal) == 0 else goal[0]
-            outcome_val = None if len(outcome) == 0 else outcome[0]
+            # Check if required columns exist
+            required_columns = ["Week", "Category", "Type", "Value"]
+            for col in required_columns:
+                if col not in self.data.columns:
+                    print(f"Missing required column: {col}")
+                    fig = go.Figure()
+                    fig.add_annotation(
+                        text=f"Missing required column: {col}",
+                        xref="paper", yref="paper",
+                        x=0.5, y=0.5, showarrow=False,
+                        font=dict(size=16, color="white")
+                    )
+                    fig.update_layout(
+                        paper_bgcolor="#262730",
+                        plot_bgcolor="#262730",
+                        font=dict(color="white")
+                    )
+                    return fig
             
-            if goal_val is not None or outcome_val is not None:
-                metrics.append({
-                    "Category": category,
-                    "Goal": goal_val,
-                    "Outcome": outcome_val
-                })
+            # Get latest week data
+            latest_week = self.data["Week"].max()
+            latest_data = self.data[self.data["Week"] == latest_week]
+            
+            # Get goal and outcome pairs
+            metrics = []
+            for category in latest_data["Category"].unique():
+                cat_data = latest_data[latest_data["Category"] == category]
+                goal = cat_data[cat_data["Type"] == "Mål"]["Value"].values
+                outcome = cat_data[cat_data["Type"] == "Utfall"]["Value"].values
                 
-        if not metrics:
-            # Return empty figure
+                goal_val = None if len(goal) == 0 else goal[0]
+                outcome_val = None if len(outcome) == 0 else outcome[0]
+                
+                if goal_val is not None or outcome_val is not None:
+                    metrics.append({
+                        "Category": category,
+                        "Goal": goal_val,
+                        "Outcome": outcome_val
+                    })
+                    
+            if not metrics:
+                # Return empty figure
+                fig = go.Figure()
+                fig.add_annotation(
+                    text="No metrics data available for the latest week",
+                    xref="paper", yref="paper",
+                    x=0.5, y=0.5, showarrow=False,
+                    font=dict(size=16, color="white")
+                )
+                fig.update_layout(
+                    paper_bgcolor="#262730",
+                    plot_bgcolor="#262730",
+                    font=dict(color="white")
+                )
+                return fig
+            
+            # Create figure with subplots
+            n_metrics = len(metrics)
+            n_cols = min(3, n_metrics)
+            n_rows = (n_metrics + n_cols - 1) // n_cols
+            
+            fig = make_subplots(
+                rows=n_rows, cols=n_cols,
+                subplot_titles=[m["Category"] for m in metrics],
+                specs=[[{"type": "indicator"} for _ in range(n_cols)] for _ in range(n_rows)]
+            )
+            
+            # Add indicators
+            for i, metric in enumerate(metrics):
+                row = i // n_cols + 1
+                col = i % n_cols + 1
+                
+                goal = metric["Goal"]
+                outcome = metric["Outcome"]
+                
+                # Check if this is a "lower is better" metric
+                is_lower_better = any(pattern in metric["Category"].lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
+                
+                if goal is not None and outcome is not None:
+                    # Calculate progress
+                    if is_lower_better:
+                        # For "lower is better" metrics, progress is reverse
+                        progress = (goal / outcome) * 100 if outcome != 0 else 0
+                        reference = 100
+                    else:
+                        # For normal metrics, progress is (outcome/goal)*100
+                        progress = (outcome / goal) * 100 if goal != 0 else 0
+                        reference = 100
+                    
+                    fig.add_trace(
+                        go.Indicator(
+                            mode="gauge+number",
+                            value=progress,
+                            title={"text": f"{metric['Category']}<br><span style='font-size:0.8em;'>Week {latest_week}</span>"},
+                            gauge={
+                                "axis": {"range": [0, 200], "ticksuffix": "%", "tickwidth": 1, "tickcolor": "white"},
+                                "bar": {"color": "#FF4B4B"},
+                                "bgcolor": "white",
+                                "borderwidth": 2,
+                                "bordercolor": "gray",
+                                "steps": [
+                                    {"range": [0, 50], "color": "#FF0000"},
+                                    {"range": [50, 100], "color": "#FFFF00"},
+                                    {"range": [100, 200], "color": "#00FF00"}
+                                ],
+                                "threshold": {
+                                    "line": {"color": "black", "width": 4},
+                                    "thickness": 0.75,
+                                    "value": reference
+                                }
+                            },
+                            number={"suffix": "%", "font": {"size": 20}},
+                            domain={"row": row - 1, "column": col - 1}
+                        )
+                    )
+                elif goal is not None:
+                    fig.add_trace(
+                        go.Indicator(
+                            mode="number",
+                            value=goal,
+                            title={"text": f"{metric['Category']}<br><span style='font-size:0.8em;'>Goal: {goal}</span>"},
+                            number={"font": {"size": 20, "color": "#00BFFF"}},
+                            domain={"row": row - 1, "column": col - 1}
+                        )
+                    )
+                elif outcome is not None:
+                    fig.add_trace(
+                        go.Indicator(
+                            mode="number",
+                            value=outcome,
+                            title={"text": f"{metric['Category']}<br><span style='font-size:0.8em;'>Outcome: {outcome}</span>"},
+                            number={"font": {"size": 20, "color": "#FF4B4B"}},
+                            domain={"row": row - 1, "column": col - 1}
+                        )
+                    )
+            
+            # Update layout
+            fig.update_layout(
+                height=300 * n_rows,
+                paper_bgcolor="#262730",
+                plot_bgcolor="#262730",
+                font=dict(color="white"),
+                margin=dict(t=50, b=20),
+                title="Latest Week Metrics"
+            )
+            
+            return fig
+        except Exception as e:
+            print(f"Error creating metrics display: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            # Return error figure
             fig = go.Figure()
             fig.add_annotation(
-                text="No metrics data available for the latest week",
+                text=f"Error creating metrics display: {str(e)}",
                 xref="paper", yref="paper",
                 x=0.5, y=0.5, showarrow=False,
                 font=dict(size=16, color="white")
@@ -540,98 +685,6 @@ class BalthazarVisualizer:
                 font=dict(color="white")
             )
             return fig
-        
-        # Create figure with subplots
-        n_metrics = len(metrics)
-        n_cols = min(3, n_metrics)
-        n_rows = (n_metrics + n_cols - 1) // n_cols
-        
-        fig = make_subplots(
-            rows=n_rows, cols=n_cols,
-            subplot_titles=[m["Category"] for m in metrics],
-            specs=[[{"type": "indicator"} for _ in range(n_cols)] for _ in range(n_rows)]
-        )
-        
-        # Add indicators
-        for i, metric in enumerate(metrics):
-            row = i // n_cols + 1
-            col = i % n_cols + 1
-            
-            goal = metric["Goal"]
-            outcome = metric["Outcome"]
-            
-            # Check if this is a "lower is better" metric
-            is_lower_better = any(pattern in metric["Category"].lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
-            
-            if goal is not None and outcome is not None:
-                # Calculate progress
-                if is_lower_better:
-                    # For "lower is better" metrics, progress is reverse
-                    progress = (goal / outcome) * 100 if outcome != 0 else 0
-                    reference = 100
-                else:
-                    # For normal metrics, progress is (outcome/goal)*100
-                    progress = (outcome / goal) * 100 if goal != 0 else 0
-                    reference = 100
-                
-                fig.add_trace(
-                    go.Indicator(
-                        mode="gauge+number",
-                        value=progress,
-                        title={"text": f"{metric['Category']}<br><span style='font-size:0.8em;'>Week {latest_week}</span>"},
-                        gauge={
-                            "axis": {"range": [0, 200], "ticksuffix": "%", "tickwidth": 1, "tickcolor": "white"},
-                            "bar": {"color": "#FF4B4B"},
-                            "bgcolor": "white",
-                            "borderwidth": 2,
-                            "bordercolor": "gray",
-                            "steps": [
-                                {"range": [0, 50], "color": "#FF0000"},
-                                {"range": [50, 100], "color": "#FFFF00"},
-                                {"range": [100, 200], "color": "#00FF00"}
-                            ],
-                            "threshold": {
-                                "line": {"color": "black", "width": 4},
-                                "thickness": 0.75,
-                                "value": reference
-                            }
-                        },
-                        number={"suffix": "%", "font": {"size": 20}},
-                        domain={"row": row - 1, "column": col - 1}
-                    )
-                )
-            elif goal is not None:
-                fig.add_trace(
-                    go.Indicator(
-                        mode="number",
-                        value=goal,
-                        title={"text": f"{metric['Category']}<br><span style='font-size:0.8em;'>Goal: {goal}</span>"},
-                        number={"font": {"size": 20, "color": "#00BFFF"}},
-                        domain={"row": row - 1, "column": col - 1}
-                    )
-                )
-            elif outcome is not None:
-                fig.add_trace(
-                    go.Indicator(
-                        mode="number",
-                        value=outcome,
-                        title={"text": f"{metric['Category']}<br><span style='font-size:0.8em;'>Outcome: {outcome}</span>"},
-                        number={"font": {"size": 20, "color": "#FF4B4B"}},
-                        domain={"row": row - 1, "column": col - 1}
-                    )
-                )
-        
-        # Update layout
-        fig.update_layout(
-            height=300 * n_rows,
-            paper_bgcolor="#262730",
-            plot_bgcolor="#262730",
-            font=dict(color="white"),
-            margin=dict(t=50, b=20),
-            title="Latest Week Metrics"
-        )
-        
-        return fig
         
     def create_category_plots(self):
         """
@@ -659,187 +712,227 @@ class BalthazarVisualizer:
             )
             return [fig]
             
-        # Prepare data
-        self.prepare_data()
-        
-        # Group categories
-        financial = ["Försäljning SEK eller högre", "Utgifter SEK eller lägre", "Resultat SEK"]
-        productivity = [
-            "Bokade möten", "Git commits", "Artiklar Hemsida (SEO)",
-            "Gratis verktyg hemsida (SEO)", "Skickade E-post", 
-            "Färdiga moment produktion"
-        ]
-        content = ["Långa YT videos", "Korta YT videos"]
-        
-        # Filter categories that exist in the data
-        data_categories = set(self.data["Category"].unique())
-        financial = [cat for cat in financial if cat in data_categories]
-        productivity = [cat for cat in productivity if cat in data_categories]
-        content = [cat for cat in content if cat in data_categories]
-        
-        # Create figures
-        figures = []
-        
-        if financial:
-            fig = go.Figure()
-            for category in financial:
-                cat_data = self.data[self.data["Category"] == category]
-                
-                # Plot goals
-                goals = cat_data[cat_data["Type"] == "Mål"].dropna(subset=["Value"])
-                if not goals.empty:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=goals["Week"],
-                            y=goals["Value"],
-                            mode="lines+markers",
-                            name=f"{category} - Mål",
-                            line=dict(dash="dot", color=self.colors["Mål"]),
-                            legendgroup=category
-                        )
-                    )
-                
-                # Plot outcomes
-                outcomes = cat_data[cat_data["Type"] == "Utfall"].dropna(subset=["Value"])
-                if not outcomes.empty:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=outcomes["Week"],
-                            y=outcomes["Value"],
-                            mode="lines+markers",
-                            name=f"{category} - Utfall",
-                            line=dict(color=self.colors["Utfall"]),
-                            legendgroup=category
-                        )
-                    )
+        try:
+            # Prepare data
+            self.prepare_data()
             
-            # Update layout
+            # Check if required columns exist
+            required_columns = ["Week", "Category", "Type", "Value"]
+            for col in required_columns:
+                if col not in self.data.columns:
+                    print(f"Missing required column: {col}")
+                    fig = go.Figure()
+                    fig.add_annotation(
+                        text=f"Missing required column: {col}",
+                        xref="paper", yref="paper",
+                        x=0.5, y=0.5, showarrow=False,
+                        font=dict(size=16, color="white")
+                    )
+                    fig.update_layout(
+                        paper_bgcolor="#262730",
+                        plot_bgcolor="#262730",
+                        font=dict(color="white")
+                    )
+                    return [fig]
+            
+            # Group categories
+            financial = ["Försäljning SEK eller högre", "Utgifter SEK eller lägre", "Resultat SEK"]
+            productivity = [
+                "Bokade möten", "Git commits", "Artiklar Hemsida (SEO)",
+                "Gratis verktyg hemsida (SEO)", "Skickade E-post", 
+                "Färdiga moment produktion"
+            ]
+            content = ["Långa YT videos", "Korta YT videos"]
+            
+            # Filter categories that exist in the data
+            data_categories = set(self.data["Category"].unique())
+            financial = [cat for cat in financial if cat in data_categories]
+            productivity = [cat for cat in productivity if cat in data_categories]
+            content = [cat for cat in content if cat in data_categories]
+            
+            # Create figures
+            figures = []
+            
+            if financial:
+                fig = go.Figure()
+                for category in financial:
+                    cat_data = self.data[self.data["Category"] == category]
+                    
+                    # Plot goals
+                    goals = cat_data[cat_data["Type"] == "Mål"].dropna(subset=["Value"])
+                    if not goals.empty:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=goals["Week"],
+                                y=goals["Value"],
+                                mode="lines+markers",
+                                name=f"{category} - Mål",
+                                line=dict(dash="dot", color=self.colors["Mål"]),
+                                legendgroup=category
+                            )
+                        )
+                    
+                    # Plot outcomes
+                    outcomes = cat_data[cat_data["Type"] == "Utfall"].dropna(subset=["Value"])
+                    if not outcomes.empty:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=outcomes["Week"],
+                                y=outcomes["Value"],
+                                mode="lines+markers",
+                                name=f"{category} - Utfall",
+                                line=dict(color=self.colors["Utfall"]),
+                                legendgroup=category
+                            )
+                        )
+                
+                # Update layout
+                fig.update_layout(
+                    title="Financial Metrics",
+                    xaxis_title="Week",
+                    yaxis_title="Value",
+                    paper_bgcolor="#262730",
+                    plot_bgcolor="#262730",
+                    font=dict(color="white"),
+                    legend=dict(
+                        font=dict(color="white"),
+                        bgcolor="#262730",
+                        bordercolor="white",
+                        borderwidth=1
+                    ),
+                    xaxis=dict(gridcolor="#444"),
+                    yaxis=dict(gridcolor="#444")
+                )
+                
+                figures.append(fig)
+                
+            if productivity:
+                fig = go.Figure()
+                for category in productivity:
+                    cat_data = self.data[self.data["Category"] == category]
+                    
+                    # Plot goals
+                    goals = cat_data[cat_data["Type"] == "Mål"].dropna(subset=["Value"])
+                    if not goals.empty:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=goals["Week"],
+                                y=goals["Value"],
+                                mode="lines+markers",
+                                name=f"{category} - Mål",
+                                line=dict(dash="dot", color=self.colors["Mål"]),
+                                legendgroup=category
+                            )
+                        )
+                    
+                    # Plot outcomes
+                    outcomes = cat_data[cat_data["Type"] == "Utfall"].dropna(subset=["Value"])
+                    if not outcomes.empty:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=outcomes["Week"],
+                                y=outcomes["Value"],
+                                mode="lines+markers",
+                                name=f"{category} - Utfall",
+                                line=dict(color=self.colors["Utfall"]),
+                                legendgroup=category
+                            )
+                        )
+                
+                # Update layout
+                fig.update_layout(
+                    title="Productivity Metrics",
+                    xaxis_title="Week",
+                    yaxis_title="Value",
+                    paper_bgcolor="#262730",
+                    plot_bgcolor="#262730",
+                    font=dict(color="white"),
+                    legend=dict(
+                        font=dict(color="white"),
+                        bgcolor="#262730",
+                        bordercolor="white",
+                        borderwidth=1
+                    ),
+                    xaxis=dict(gridcolor="#444"),
+                    yaxis=dict(gridcolor="#444")
+                )
+                
+                figures.append(fig)
+                
+            if content:
+                fig = go.Figure()
+                for category in content:
+                    cat_data = self.data[self.data["Category"] == category]
+                    
+                    # Plot goals
+                    goals = cat_data[cat_data["Type"] == "Mål"].dropna(subset=["Value"])
+                    if not goals.empty:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=goals["Week"],
+                                y=goals["Value"],
+                                mode="lines+markers",
+                                name=f"{category} - Mål",
+                                line=dict(dash="dot", color=self.colors["Mål"]),
+                                legendgroup=category
+                            )
+                        )
+                    
+                    # Plot outcomes
+                    outcomes = cat_data[cat_data["Type"] == "Utfall"].dropna(subset=["Value"])
+                    if not outcomes.empty:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=outcomes["Week"],
+                                y=outcomes["Value"],
+                                mode="lines+markers",
+                                name=f"{category} - Utfall",
+                                line=dict(color=self.colors["Utfall"]),
+                                legendgroup=category
+                            )
+                        )
+                
+                # Update layout
+                fig.update_layout(
+                    title="Content Metrics",
+                    xaxis_title="Week",
+                    yaxis_title="Value",
+                    paper_bgcolor="#262730",
+                    plot_bgcolor="#262730",
+                    font=dict(color="white"),
+                    legend=dict(
+                        font=dict(color="white"),
+                        bgcolor="#262730",
+                        bordercolor="white",
+                        borderwidth=1
+                    ),
+                    xaxis=dict(gridcolor="#444"),
+                    yaxis=dict(gridcolor="#444")
+                )
+                
+                figures.append(fig)
+                
+            return figures
+            
+        except Exception as e:
+            print(f"Error creating category plots: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            # Return error figure
+            fig = go.Figure()
+            fig.add_annotation(
+                text=f"Error creating category plots: {str(e)}",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5, showarrow=False,
+                font=dict(size=16, color="white")
+            )
             fig.update_layout(
-                title="Financial Metrics",
-                xaxis_title="Week",
-                yaxis_title="Value",
                 paper_bgcolor="#262730",
                 plot_bgcolor="#262730",
-                font=dict(color="white"),
-                legend=dict(
-                    font=dict(color="white"),
-                    bgcolor="#262730",
-                    bordercolor="white",
-                    borderwidth=1
-                ),
-                xaxis=dict(gridcolor="#444"),
-                yaxis=dict(gridcolor="#444")
+                font=dict(color="white")
             )
-            
-            figures.append(fig)
-            
-        if productivity:
-            fig = go.Figure()
-            for category in productivity:
-                cat_data = self.data[self.data["Category"] == category]
-                
-                # Plot goals
-                goals = cat_data[cat_data["Type"] == "Mål"].dropna(subset=["Value"])
-                if not goals.empty:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=goals["Week"],
-                            y=goals["Value"],
-                            mode="lines+markers",
-                            name=f"{category} - Mål",
-                            line=dict(dash="dot", color=self.colors["Mål"]),
-                            legendgroup=category
-                        )
-                    )
-                
-                # Plot outcomes
-                outcomes = cat_data[cat_data["Type"] == "Utfall"].dropna(subset=["Value"])
-                if not outcomes.empty:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=outcomes["Week"],
-                            y=outcomes["Value"],
-                            mode="lines+markers",
-                            name=f"{category} - Utfall",
-                            line=dict(color=self.colors["Utfall"]),
-                            legendgroup=category
-                        )
-                    )
-            
-            # Update layout
-            fig.update_layout(
-                title="Productivity Metrics",
-                xaxis_title="Week",
-                yaxis_title="Value",
-                paper_bgcolor="#262730",
-                plot_bgcolor="#262730",
-                font=dict(color="white"),
-                legend=dict(
-                    font=dict(color="white"),
-                    bgcolor="#262730",
-                    bordercolor="white",
-                    borderwidth=1
-                ),
-                xaxis=dict(gridcolor="#444"),
-                yaxis=dict(gridcolor="#444")
-            )
-            
-            figures.append(fig)
-            
-        if content:
-            fig = go.Figure()
-            for category in content:
-                cat_data = self.data[self.data["Category"] == category]
-                
-                # Plot goals
-                goals = cat_data[cat_data["Type"] == "Mål"].dropna(subset=["Value"])
-                if not goals.empty:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=goals["Week"],
-                            y=goals["Value"],
-                            mode="lines+markers",
-                            name=f"{category} - Mål",
-                            line=dict(dash="dot", color=self.colors["Mål"]),
-                            legendgroup=category
-                        )
-                    )
-                
-                # Plot outcomes
-                outcomes = cat_data[cat_data["Type"] == "Utfall"].dropna(subset=["Value"])
-                if not outcomes.empty:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=outcomes["Week"],
-                            y=outcomes["Value"],
-                            mode="lines+markers",
-                            name=f"{category} - Utfall",
-                            line=dict(color=self.colors["Utfall"]),
-                            legendgroup=category
-                        )
-                    )
-            
-            # Update layout
-            fig.update_layout(
-                title="Content Metrics",
-                xaxis_title="Week",
-                yaxis_title="Value",
-                paper_bgcolor="#262730",
-                plot_bgcolor="#262730",
-                font=dict(color="white"),
-                legend=dict(
-                    font=dict(color="white"),
-                    bgcolor="#262730",
-                    bordercolor="white",
-                    borderwidth=1
-                ),
-                xaxis=dict(gridcolor="#444"),
-                yaxis=dict(gridcolor="#444")
-            )
-            
-            figures.append(fig)
-            
-        return figures
+            return [fig]
         
     def create_comparison_plots(self):
         """
@@ -867,116 +960,156 @@ class BalthazarVisualizer:
             )
             return [fig]
             
-        # Prepare data
-        self.prepare_data()
-        
-        # Get all categories
-        all_categories = sorted(self.data["Category"].unique())
-        
-        # Create figures
-        figures = []
-        for category in all_categories:
-            cat_data = self.data[self.data["Category"] == category]
+        try:
+            # Prepare data
+            self.prepare_data()
             
-            # Create subplots with 2 y-axes
-            fig = make_subplots(specs=[[{"secondary_y": True}]])
-            
-            # Check if this is a "lower is better" metric
-            is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
-            
-            # Plot goals
-            goals = cat_data[cat_data["Type"] == "Mål"].dropna(subset=["Value"])
-            if not goals.empty:
-                fig.add_trace(
-                    go.Scatter(
-                        x=goals["Week"],
-                        y=goals["Value"],
-                        mode="lines+markers",
-                        name="Mål",
-                        line=dict(dash="dot", color=self.colors["Mål"])
-                    ),
-                    secondary_y=False
-                )
-            
-            # Plot outcomes
-            outcomes = cat_data[cat_data["Type"] == "Utfall"].dropna(subset=["Value"])
-            if not outcomes.empty:
-                fig.add_trace(
-                    go.Scatter(
-                        x=outcomes["Week"],
-                        y=outcomes["Value"],
-                        mode="lines+markers",
-                        name="Utfall",
-                        line=dict(color=self.colors["Utfall"])
-                    ),
-                    secondary_y=False
-                )
-                
-            # Plot bar chart of achievement percentage
-            if not goals.empty and not outcomes.empty:
-                # Merge goals and outcomes on Week
-                merged = pd.merge(
-                    goals[["Week", "Value"]].rename(columns={"Value": "Goal"}),
-                    outcomes[["Week", "Value"]].rename(columns={"Value": "Outcome"}),
-                    on="Week",
-                    how="inner"
-                )
-                
-                if not merged.empty:
-                    # Calculate achievement percentage
-                    if is_lower_better:
-                        # For "lower is better" metrics, achievement is (goal/outcome)*100
-                        merged["Achievement"] = (merged["Goal"] / merged["Outcome"]) * 100
-                    else:
-                        # For normal metrics, achievement is (outcome/goal)*100
-                        merged["Achievement"] = (merged["Outcome"] / merged["Goal"]) * 100
-                    
-                    fig.add_trace(
-                        go.Bar(
-                            x=merged["Week"],
-                            y=merged["Achievement"],
-                            name="Achievement %",
-                            marker=dict(color="rgba(50, 171, 96, 0.6)"),
-                            opacity=0.7
-                        ),
-                        secondary_y=True
+            # Check if required columns exist
+            required_columns = ["Week", "Category", "Type", "Value"]
+            for col in required_columns:
+                if col not in self.data.columns:
+                    print(f"Missing required column: {col}")
+                    fig = go.Figure()
+                    fig.add_annotation(
+                        text=f"Missing required column: {col}",
+                        xref="paper", yref="paper",
+                        x=0.5, y=0.5, showarrow=False,
+                        font=dict(size=16, color="white")
                     )
+                    fig.update_layout(
+                        paper_bgcolor="#262730",
+                        plot_bgcolor="#262730",
+                        font=dict(color="white")
+                    )
+                    return [fig]
             
-            # Update layout
+            # Get all categories
+            all_categories = sorted(self.data["Category"].unique())
+            
+            # Create figures
+            figures = []
+            for category in all_categories:
+                cat_data = self.data[self.data["Category"] == category]
+                
+                # Create subplots with 2 y-axes
+                fig = make_subplots(specs=[[{"secondary_y": True}]])
+                
+                # Check if this is a "lower is better" metric
+                is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
+                
+                # Plot goals
+                goals = cat_data[cat_data["Type"] == "Mål"].dropna(subset=["Value"])
+                if not goals.empty:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=goals["Week"],
+                            y=goals["Value"],
+                            mode="lines+markers",
+                            name="Mål",
+                            line=dict(dash="dot", color=self.colors["Mål"])
+                        ),
+                        secondary_y=False
+                    )
+                
+                # Plot outcomes
+                outcomes = cat_data[cat_data["Type"] == "Utfall"].dropna(subset=["Value"])
+                if not outcomes.empty:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=outcomes["Week"],
+                            y=outcomes["Value"],
+                            mode="lines+markers",
+                            name="Utfall",
+                            line=dict(color=self.colors["Utfall"])
+                        ),
+                        secondary_y=False
+                    )
+                    
+                # Plot bar chart of achievement percentage
+                if not goals.empty and not outcomes.empty:
+                    # Merge goals and outcomes on Week
+                    merged = pd.merge(
+                        goals[["Week", "Value"]].rename(columns={"Value": "Goal"}),
+                        outcomes[["Week", "Value"]].rename(columns={"Value": "Outcome"}),
+                        on="Week",
+                        how="inner"
+                    )
+                    
+                    if not merged.empty:
+                        # Calculate achievement percentage
+                        if is_lower_better:
+                            # For "lower is better" metrics, achievement is (goal/outcome)*100
+                            merged["Achievement"] = (merged["Goal"] / merged["Outcome"]) * 100
+                        else:
+                            # For normal metrics, achievement is (outcome/goal)*100
+                            merged["Achievement"] = (merged["Outcome"] / merged["Goal"]) * 100
+                        
+                        fig.add_trace(
+                            go.Bar(
+                                x=merged["Week"],
+                                y=merged["Achievement"],
+                                name="Achievement %",
+                                marker=dict(color="rgba(50, 171, 96, 0.6)"),
+                                opacity=0.7
+                            ),
+                            secondary_y=True
+                        )
+                
+                # Update layout
+                fig.update_layout(
+                    title=f"{category}: Goals vs. Outcomes",
+                    xaxis_title="Week",
+                    paper_bgcolor="#262730",
+                    plot_bgcolor="#262730",
+                    font=dict(color="white"),
+                    legend=dict(
+                        font=dict(color="white"),
+                        bgcolor="#262730",
+                        bordercolor="white",
+                        borderwidth=1
+                    ),
+                    xaxis=dict(gridcolor="#444"),
+                    yaxis=dict(gridcolor="#444"),
+                    yaxis2=dict(gridcolor="#444", range=[0, 200])
+                )
+                
+                # Update y-axis labels
+                fig.update_yaxes(title_text="Value", secondary_y=False, color="white")
+                fig.update_yaxes(title_text="Achievement %", secondary_y=True, color="rgba(50, 171, 96, 1)")
+                
+                # If it's a "lower is better" metric, add a note
+                if is_lower_better:
+                    fig.add_annotation(
+                        text="(lower is better)",
+                        xref="paper", yref="paper",
+                        x=0.5, y=1.05,
+                        showarrow=False,
+                        font=dict(size=12, color="white")
+                    )
+                
+                figures.append(fig)
+                
+            return figures
+            
+        except Exception as e:
+            print(f"Error creating comparison plots: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            # Return error figure
+            fig = go.Figure()
+            fig.add_annotation(
+                text=f"Error creating comparison plots: {str(e)}",
+                xref="paper", yref="paper",
+                x=0.5, y=0.5, showarrow=False,
+                font=dict(size=16, color="white")
+            )
             fig.update_layout(
-                title=f"{category}: Goals vs. Outcomes",
-                xaxis_title="Week",
                 paper_bgcolor="#262730",
                 plot_bgcolor="#262730",
-                font=dict(color="white"),
-                legend=dict(
-                    font=dict(color="white"),
-                    bgcolor="#262730",
-                    bordercolor="white",
-                    borderwidth=1
-                ),
-                xaxis=dict(gridcolor="#444"),
-                yaxis=dict(gridcolor="#444"),
-                yaxis2=dict(gridcolor="#444", range=[0, 200])
+                font=dict(color="white")
             )
-            
-            # Update y-axis labels
-            fig.update_yaxes(title_text="Value", secondary_y=False, color="white")
-            fig.update_yaxes(title_text="Achievement %", secondary_y=True, color="rgba(50, 171, 96, 1)")
-            
-            # If it's a "lower is better" metric, add a note
-            if is_lower_better:
-                fig.add_annotation(
-                    text="(lower is better)",
-                    xref="paper", yref="paper",
-                    x=0.5, y=1.05,
-                    showarrow=False,
-                    font=dict(size=12, color="white")
-                )
-            
-            figures.append(fig)
-            
-        return figures
+            return [fig]
         
     def save_to_browser(self, date_range):
         """
