@@ -658,6 +658,25 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                 min_week = 15
                                 max_week = 26
                             
+                            # Get y-axis range with padding
+                            all_values = []
+                            if not goal_data.empty:
+                                all_values.extend(goal_data["Value"].tolist())
+                            if not outcome_data.empty:
+                                all_values.extend(outcome_data["Value"].tolist())
+                                
+                            if all_values:
+                                min_val = min(all_values)
+                                max_val = max(all_values)
+                                # Add 20% padding to top and 10% to bottom
+                                y_padding_top = (max_val - min_val) * 0.2
+                                y_padding_bottom = (max_val - min_val) * 0.1
+                                y_min = max(0, min_val - y_padding_bottom)  # Don't go below zero unless data is negative
+                                y_max = max_val + y_padding_top
+                            else:
+                                y_min = 0
+                                y_max = 100
+                            
                             # Update layout
                             fig.update_layout(
                                 title=f"{category}",
@@ -671,7 +690,8 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                 yaxis=dict(
                                     title="Value",
                                     autorange="reversed" if is_lower_better and invert_metrics else None,
-                                    gridcolor="#444444"
+                                    gridcolor="#444444",
+                                    range=[y_min, y_max] if not (is_lower_better and invert_metrics) else [y_max, y_min]
                                 ),
                                 plot_bgcolor="#262730",
                                 paper_bgcolor="#262730",
@@ -1074,6 +1094,25 @@ if 'data' in st.session_state and st.session_state.data is not None:
                         min_week = 15
                         max_week = 26
                     
+                    # Get y-axis range with padding
+                    all_values = []
+                    if not goal_data.empty:
+                        all_values.extend(goal_data["Value"].tolist())
+                    if not outcome_data.empty:
+                        all_values.extend(outcome_data["Value"].tolist())
+                        
+                    if all_values:
+                        min_val = min(all_values)
+                        max_val = max(all_values)
+                        # Add 20% padding to top and 10% to bottom
+                        y_padding_top = (max_val - min_val) * 0.2
+                        y_padding_bottom = (max_val - min_val) * 0.1
+                        y_min = max(0, min_val - y_padding_bottom)  # Don't go below zero unless data is negative
+                        y_max = max_val + y_padding_top
+                    else:
+                        y_min = 0
+                        y_max = 100
+                    
                     # Update layout
                     fig.update_layout(
                         title=f"{category} Detail View",
@@ -1087,7 +1126,8 @@ if 'data' in st.session_state and st.session_state.data is not None:
                         yaxis=dict(
                             title="Value" if not is_lower_better else "Value (lower is better)",
                             autorange="reversed" if is_lower_better and invert_metrics else None,
-                            gridcolor="#444444"
+                            gridcolor="#444444",
+                            range=[y_min, y_max] if not (is_lower_better and invert_metrics) else [y_max, y_min]
                         ),
                         plot_bgcolor="#262730",
                         paper_bgcolor="#262730",
@@ -1190,6 +1230,20 @@ if 'data' in st.session_state and st.session_state.data is not None:
             # Get all weeks
             all_weeks = sorted(set(goals_x + outcomes_x))
             if all_weeks:
+                # Calculate y-axis range with padding
+                all_values = goals_y + outcomes_y
+                if all_values:
+                    min_val = min(all_values)
+                    max_val = max(all_values)
+                    # Add 20% padding to top and 10% to bottom
+                    y_padding_top = (max_val - min_val) * 0.2 if max_val > min_val else max_val * 0.2
+                    y_padding_bottom = (max_val - min_val) * 0.1 if max_val > min_val else max_val * 0.1
+                    y_min = max(0, min_val - y_padding_bottom)  # Don't go below zero unless data is negative
+                    y_max = max_val + y_padding_top
+                else:
+                    y_min = 0
+                    y_max = 100
+                
                 # Update layout
                 min_week = min(all_weeks)
                 max_week = max(all_weeks)
@@ -1218,7 +1272,8 @@ if 'data' in st.session_state and st.session_state.data is not None:
                         zeroline=True,
                         zerolinecolor="#888",
                         zerolinewidth=1,
-                        title_font=dict(size=14)
+                        title_font=dict(size=14),
+                        range=[y_min, y_max] if not (is_lower_better and invert_metrics) else [y_max, y_min]
                     )
                 )
                 
