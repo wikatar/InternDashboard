@@ -727,10 +727,23 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                 # Add 20% padding to top and 10% to bottom
                                 y_padding_top = (max_val - min_val) * 0.2
                                 y_padding_bottom = (max_val - min_val) * 0.1
-                                y_min = max(0, min_val - y_padding_bottom)  # Don't go below zero unless data is negative
-                                y_max = max_val + y_padding_top
                                 
-                                # Special case for Försäljning SEK eller högre to ensure proper scale
+                                # Special handling for Resultat SEK where values can be negative
+                                if category == "Resultat SEK":
+                                    y_min = min_val - y_padding_bottom  # Allow negative values
+                                    # Ensure we include both positive and negative ranges properly
+                                    if min_val < 0 and max_val > 0:
+                                        y_padding_neg = abs(min_val) * 0.2
+                                        y_padding_pos = max_val * 0.2
+                                        y_min = min_val - y_padding_neg
+                                        y_max = max_val + y_padding_pos
+                                    else:
+                                        y_max = max_val + y_padding_top
+                                else:
+                                    y_min = max(0, min_val - y_padding_bottom)  # Don't go below zero unless data is negative
+                                    y_max = max_val + y_padding_top
+                                
+                                # Special case for Försäljning SEK eller högre
                                 if category == "Försäljning SEK eller högre":
                                     # Ensure maximum of 7000 to show 5000 comfortably
                                     y_max = max(7000, y_max)
@@ -1206,8 +1219,21 @@ if 'data' in st.session_state and st.session_state.data is not None:
                         # Add 20% padding to top and 10% to bottom
                         y_padding_top = (max_val - min_val) * 0.2
                         y_padding_bottom = (max_val - min_val) * 0.1
-                        y_min = max(0, min_val - y_padding_bottom)  # Don't go below zero unless data is negative
-                        y_max = max_val + y_padding_top
+                        
+                        # Special handling for Resultat SEK where values can be negative
+                        if category == "Resultat SEK":
+                            y_min = min_val - y_padding_bottom  # Allow negative values
+                            # Ensure we include both positive and negative ranges properly
+                            if min_val < 0 and max_val > 0:
+                                y_padding_neg = abs(min_val) * 0.2
+                                y_padding_pos = max_val * 0.2
+                                y_min = min_val - y_padding_neg
+                                y_max = max_val + y_padding_pos
+                            else:
+                                y_max = max_val + y_padding_top
+                        else:
+                            y_min = max(0, min_val - y_padding_bottom)  # Don't go below zero unless data is negative
+                            y_max = max_val + y_padding_top
                         
                         # Special case for Försäljning SEK eller högre
                         if category == "Försäljning SEK eller högre":
@@ -1352,14 +1378,30 @@ if 'data' in st.session_state and st.session_state.data is not None:
                 
                 # Calculate y-axis range with padding
                 all_values = goals_y + outcomes_y
+                # Ensure we include zero in the values
+                all_values.append(0)
+                
                 if all_values:
                     min_val = min(all_values)
                     max_val = max(all_values)
                     # Add 20% padding to top and 10% to bottom
                     y_padding_top = (max_val - min_val) * 0.2 if max_val > min_val else max_val * 0.2
                     y_padding_bottom = (max_val - min_val) * 0.1 if max_val > min_val else max_val * 0.1
-                    y_min = max(0, min_val - y_padding_bottom)  # Don't go below zero unless data is negative
-                    y_max = max_val + y_padding_top
+                    
+                    # Special handling for Resultat SEK where values can be negative
+                    if selected_category == "Resultat SEK":
+                        y_min = min_val - y_padding_bottom  # Allow negative values
+                        # Ensure we include both positive and negative ranges properly
+                        if min_val < 0 and max_val > 0:
+                            y_padding_neg = abs(min_val) * 0.2
+                            y_padding_pos = max_val * 0.2
+                            y_min = min_val - y_padding_neg
+                            y_max = max_val + y_padding_pos
+                        else:
+                            y_max = max_val + y_padding_top
+                    else:
+                        y_min = max(0, min_val - y_padding_bottom)  # Don't go below zero unless data is negative
+                        y_max = max_val + y_padding_top
                     
                     # Special case for Försäljning SEK eller högre
                     if selected_category == "Försäljning SEK eller högre":
