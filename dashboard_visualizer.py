@@ -187,11 +187,6 @@ class BalthazarVisualizer:
                     axes[i].text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
                     continue
                 
-                # Print debug information
-                print(f"\nCategory: {category}")
-                print("All data points:")
-                print(cat_df)
-                
                 # Ensure data is sorted by Week
                 cat_df = cat_df.sort_values("Week")
                 
@@ -212,8 +207,6 @@ class BalthazarVisualizer:
                 # Plot goals (dotted line)
                 goal_df = cat_df[cat_df["Type"] == "Mål"]
                 if not goal_df.empty:
-                    print("\nGoal data points:")
-                    print(goal_df)
                     axes[i].plot(
                         goal_df["Week"],
                         goal_df["Value"],
@@ -226,8 +219,6 @@ class BalthazarVisualizer:
                 # Plot outcomes (solid line)
                 outcome_df = cat_df[cat_df["Type"] == "Utfall"]
                 if not outcome_df.empty:
-                    print("\nOutcome data points:")
-                    print(outcome_df)
                     axes[i].plot(
                         outcome_df["Week"],
                         outcome_df["Value"],
@@ -236,8 +227,6 @@ class BalthazarVisualizer:
                         marker="o" if self.show_markers else None,
                         label="Utfall"
                     )
-                else:
-                    print(f"\nNo outcome data found for {category}")
                 
                 # Set plot title and labels
                 axes[i].set_title(category, color="#FFFFFF")
