@@ -187,75 +187,44 @@ class BalthazarVisualizer:
                     axes[i].text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
                     continue
                 
-                # Ensure data is sorted by Week
-                cat_df = cat_df.sort_values("Week")
+                # Simple XY plot for goals
+                goals = cat_df[cat_df["Type"] == "Mål"]
+                if not goals.empty:
+                    axes[i].plot(goals["Week"], goals["Value"], 
+                               color=self.colors["Mål"], 
+                               linestyle=":", 
+                               marker="o",
+                               label="Mål")
                 
-                # Get all weeks in the data
-                all_weeks = sorted(cat_df["Week"].unique())
+                # Simple XY plot for outcomes
+                outcomes = cat_df[cat_df["Type"] == "Utfall"]
+                if not outcomes.empty:
+                    axes[i].plot(outcomes["Week"], outcomes["Value"], 
+                               color=self.colors["Utfall"], 
+                               linestyle="-", 
+                               marker="o",
+                               label="Utfall")
                 
-                # Set x-axis range if specified
-                if x_range:
-                    start_week, end_week = x_range
-                    cat_df = cat_df[(cat_df["Week"] >= start_week) & (cat_df["Week"] <= end_week)]
-                    weeks = list(range(start_week, end_week + 1))
-                else:
-                    weeks = all_weeks
-                
-                # Check if this is a "lower is better" metric
-                is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower"])
-                
-                # Plot goals (dotted line)
-                goal_df = cat_df[cat_df["Type"] == "Mål"]
-                if not goal_df.empty:
-                    axes[i].plot(
-                        goal_df["Week"],
-                        goal_df["Value"],
-                        color=self.colors["Mål"],
-                        linestyle=":",
-                        marker="o" if self.show_markers else None,
-                        label="Mål"
-                    )
-                    
-                # Plot outcomes (solid line)
-                outcome_df = cat_df[cat_df["Type"] == "Utfall"]
-                if not outcome_df.empty:
-                    axes[i].plot(
-                        outcome_df["Week"],
-                        outcome_df["Value"],
-                        color=self.colors["Utfall"],
-                        linestyle="-",
-                        marker="o" if self.show_markers else None,
-                        label="Utfall"
-                    )
-                
-                # Set plot title and labels
+                # Basic plot settings
                 axes[i].set_title(category, color="#FFFFFF")
                 axes[i].set_xlabel("Week", color="#FAFAFA")
                 axes[i].set_ylabel("Value", color="#FAFAFA")
                 
-                # Format x-axis ticks
-                axes[i].set_xticks(weeks)
-                axes[i].set_xticklabels([f"Week {w}" for w in weeks])
-                
                 # If it's a "lower is better" metric, invert the y-axis
-                if is_lower_better:
+                if any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower"]):
                     axes[i].invert_yaxis()
-                    # Set y-axis label to indicate inversion
                     axes[i].set_ylabel("Value (lower is better)", color="#FAFAFA")
                 
-                # Add legend
+                # Add legend and grid
                 axes[i].legend(title="", frameon=True, facecolor="#262730", edgecolor="#666666")
-                
-                # Add grid if enabled
-                if self.show_grid:
-                    axes[i].grid(True, linestyle="--", alpha=0.7, color="#444444")
+                axes[i].grid(True, linestyle="--", alpha=0.7, color="#444444")
         
         # Hide unused subplots
         for j in range(i + 1, len(axes)):
             fig.delaxes(axes[j])
             
         # Adjust layout
-        fig.tight_layout(rect=[0, 0, 1, 0.95])  # Leave space for suptitle
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
         
         return fig
         
