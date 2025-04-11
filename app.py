@@ -12,8 +12,51 @@ st.set_page_config(
     layout="wide"
 )
 
-# App title
-st.title("The Balthazar Project - Daily Dashboard")
+# Custom CSS for dark mode enhancements
+st.markdown("""
+<style>
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 4px 4px 0px 0px;
+        padding: 10px 20px;
+        background-color: #262730;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #FF4B4B !important;
+        color: white !important;
+    }
+    div.block-container {
+        padding-top: 2rem;
+    }
+    .main .block-container {
+        padding-bottom: 5rem;
+    }
+    h1 {
+        margin-bottom: 0.5rem;
+    }
+    footer {
+        visibility: hidden;
+    }
+    .stExpander {
+        border: none;
+        border-radius: 8px;
+    }
+    .stStatus {
+        width: 100%;
+    }
+    .metric-container {
+        background-color: #262730;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 10px 0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# App title with logo
+st.title("🔥 The Balthazar Project - Daily Dashboard")
 st.markdown("---")
 
 # Sidebar for configuration
@@ -90,11 +133,11 @@ if uploaded_creds is not None and fetch_button:
                 st.session_state.data = processed_data
                 st.session_state.raw_data = raw_data
                 
-                status.update(label="Data fetched successfully!", state="complete")
+                status.update(label="✅ Data fetched successfully!", state="complete")
             else:
-                status.update(label="No data found or processing error", state="error")
+                status.update(label="❌ No data found or processing error", state="error")
         else:
-            status.update(label="Failed to connect to Google Sheet", state="error")
+            status.update(label="❌ Failed to connect to Google Sheet", state="error")
     
     except Exception as e:
         st.error(f"Error: {str(e)}")
@@ -108,8 +151,36 @@ if uploaded_creds is not None and fetch_button:
 if 'data' in st.session_state:
     df = st.session_state.data
     
+    # Summary metrics in columns
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+        st.metric("Total Categories", len(df["Category"].unique()))
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+        total_goals = len(df[df["Type"] == "Mål"])
+        st.metric("Total Goals", total_goals)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+        total_outcomes = len(df[df["Type"] == "Utfall"])
+        st.metric("Total Outcomes", total_outcomes)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+        days = df["Date"].nunique()
+        st.metric("Days Tracked", days)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
     # Create tabs for different views
-    tab1, tab2, tab3 = st.tabs(["Category Groups", "Individual Metrics", "Raw Data"])
+    tab1, tab2, tab3 = st.tabs(["Category Groups 📊", "Individual Metrics 📈", "Raw Data 📋"])
     
     with tab1:
         # Create visualizer
@@ -133,12 +204,12 @@ if 'data' in st.session_state:
     with tab3:
         # Display raw data
         st.subheader("Raw Data")
-        st.dataframe(df)
+        st.dataframe(df, use_container_width=True)
         
         # Download option
         csv = df.to_csv(index=False)
         st.download_button(
-            label="Download data as CSV",
+            label="📥 Download data as CSV",
             data=csv,
             file_name="balthazar_dashboard_data.csv",
             mime="text/csv"
@@ -153,10 +224,10 @@ else:
     # Placeholder with instructions
     st.markdown("""
     This dashboard will display:
-    1. Financial Metrics (Sales, Expenses)
-    2. Productivity Metrics (Meetings, Git Commits, etc.)
-    3. Content Metrics (YouTube Videos)
-    4. Additional Statistics (YouTube, Website, Email, Customers)
+    1. 💰 **Financial Metrics** (Sales, Expenses)
+    2. 📋 **Productivity Metrics** (Meetings, Git Commits, etc.)
+    3. 🎬 **Content Metrics** (YouTube Videos)
+    4. 📊 **Additional Statistics** (YouTube, Website, Email, Customers)
     
     Each category will show Goals ("Mål") vs. Outcomes ("Utfall") to help identify pain points.
     """)

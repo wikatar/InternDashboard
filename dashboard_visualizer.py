@@ -15,14 +15,32 @@ class BalthazarVisualizer:
         """
         self.df = data_df
         
-        # Set Seaborn style
-        sns.set_theme(style="whitegrid")
+        # Set Seaborn style for dark theme
+        sns.set_theme(style="darkgrid")
         
         # Define color palette for consistent visualization
         self.colors = {
-            "Mål": "#1f77b4",  # Blue for goals
-            "Utfall": "#ff7f0e"  # Orange for outcomes
+            "Mål": "#00BFFF",  # Deep Sky Blue for goals
+            "Utfall": "#FF4B4B"  # Red for outcomes
         }
+        
+        # Set darker figure style
+        plt.rcParams.update({
+            'figure.facecolor': '#0E1117',
+            'axes.facecolor': '#262730',
+            'axes.edgecolor': '#666666',
+            'axes.labelcolor': '#FAFAFA',
+            'axes.titlecolor': '#FFFFFF',
+            'xtick.color': '#FAFAFA',
+            'ytick.color': '#FAFAFA',
+            'grid.color': '#444444',
+            'text.color': '#FAFAFA',
+            'legend.frameon': True,
+            'legend.facecolor': '#262730',
+            'legend.edgecolor': '#666666',
+            'legend.fontsize': 10,
+            'legend.title_fontsize': 12
+        })
         
     def prepare_data(self):
         """Prepare data for visualization by adding Month column and sorting."""
@@ -52,7 +70,7 @@ class BalthazarVisualizer:
         cat_df = self.df[self.df["Category"] == category]
         
         if cat_df.empty:
-            ax.text(0.5, 0.5, f"No data for {category}", ha="center", va="center")
+            ax.text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
             return fig
             
         # Create line plot
@@ -67,18 +85,18 @@ class BalthazarVisualizer:
         )
         
         # Set plot title and labels
-        ax.set_title(f"{category}: Mål vs. Utfall")
-        ax.set_xlabel("Day of Month")
-        ax.set_ylabel("Value")
+        ax.set_title(f"{category}: Mål vs. Utfall", color="#FFFFFF", fontsize=14)
+        ax.set_xlabel("Day of Month", color="#FAFAFA")
+        ax.set_ylabel("Value", color="#FAFAFA")
         
         # Format x-axis ticks
         ax.set_xticks(cat_df["Date"].unique())
         
         # Add legend
-        ax.legend(title="")
+        ax.legend(title="", frameon=True, facecolor="#262730", edgecolor="#666666")
         
         # Add grid
-        ax.grid(True, linestyle="--", alpha=0.7)
+        ax.grid(True, linestyle="--", alpha=0.7, color="#444444")
         
         # Tight layout
         fig.tight_layout()
@@ -103,7 +121,7 @@ class BalthazarVisualizer:
         n_rows = (n_cats + n_cols - 1) // n_cols
         
         fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
-        fig.suptitle(f"{group_name}", fontsize=16)
+        fig.suptitle(f"{group_name}", fontsize=16, color="#FFFFFF")
         
         # Flatten axes array for easier indexing
         if n_cats > 1:
@@ -117,7 +135,7 @@ class BalthazarVisualizer:
                 cat_df = self.df[self.df["Category"] == category]
                 
                 if cat_df.empty:
-                    axes[i].text(0.5, 0.5, f"No data for {category}", ha="center", va="center")
+                    axes[i].text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
                     continue
                 
                 # Create line plot
@@ -132,15 +150,18 @@ class BalthazarVisualizer:
                 )
                 
                 # Set plot title and labels
-                axes[i].set_title(category)
-                axes[i].set_xlabel("Day of Month")
-                axes[i].set_ylabel("Value")
+                axes[i].set_title(category, color="#FFFFFF")
+                axes[i].set_xlabel("Day of Month", color="#FAFAFA")
+                axes[i].set_ylabel("Value", color="#FAFAFA")
                 
                 # Format x-axis ticks
                 axes[i].set_xticks(cat_df["Date"].unique())
                 
                 # Add grid
-                axes[i].grid(True, linestyle="--", alpha=0.7)
+                axes[i].grid(True, linestyle="--", alpha=0.7, color="#444444")
+                
+                # Set legend
+                axes[i].legend(frameon=True, facecolor="#262730", edgecolor="#666666")
         
         # Hide unused subplots
         for j in range(i + 1, len(axes)):
