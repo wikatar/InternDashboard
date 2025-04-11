@@ -53,7 +53,7 @@ class BalthazarVisualizer:
         # Ensure Date is an integer
         self.df["Date"] = pd.to_numeric(self.df["Date"], errors="coerce")
         
-        # Convert day numbers to week numbers (assuming days 1-7 are week 1, etc.)
+        # Convert day numbers to week numbers (simple integer division)
         self.df["Week"] = ((self.df["Date"] - 1) // 7) + 1
         
         # Sort by Week and Type to ensure consistent plotting
@@ -187,7 +187,11 @@ class BalthazarVisualizer:
                     axes[i].text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
                     continue
                 
-                # Simple XY plot for goals
+                # Get min and max weeks for x-axis
+                min_week = int(cat_df["Week"].min())
+                max_week = int(cat_df["Week"].max())
+                
+                # Plot goals (dotted line)
                 goals = cat_df[cat_df["Type"] == "Mål"]
                 if not goals.empty:
                     axes[i].plot(goals["Week"], goals["Value"], 
@@ -196,7 +200,7 @@ class BalthazarVisualizer:
                                marker="o",
                                label="Mål")
                 
-                # Simple XY plot for outcomes
+                # Plot outcomes (solid line)
                 outcomes = cat_df[cat_df["Type"] == "Utfall"]
                 if not outcomes.empty:
                     axes[i].plot(outcomes["Week"], outcomes["Value"], 
@@ -209,6 +213,13 @@ class BalthazarVisualizer:
                 axes[i].set_title(category, color="#FFFFFF")
                 axes[i].set_xlabel("Week", color="#FAFAFA")
                 axes[i].set_ylabel("Value", color="#FAFAFA")
+                
+                # Set x-axis to integer weeks
+                axes[i].set_xticks(range(min_week, max_week + 1))
+                axes[i].set_xticklabels([f"Week {w}" for w in range(min_week, max_week + 1)])
+                
+                # Set y-axis to start at 0
+                axes[i].set_ylim(bottom=0)
                 
                 # If it's a "lower is better" metric, invert the y-axis
                 if any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower"]):
