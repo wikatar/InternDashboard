@@ -12,6 +12,21 @@ st.set_page_config(
     layout="wide"
 )
 
+# Initialize session state for persistent settings
+if 'settings' not in st.session_state:
+    st.session_state.settings = {
+        'sheet_name': '2025',
+        'worksheet_name': 'Veckomål',
+        'data_range': 'A1:AE100',
+        'graph_settings': {
+            'figsize': (10, 6),
+            'show_grid': True,
+            'show_markers': True,
+            'goal_color': '#00BFFF',
+            'outcome_color': '#FF4B4B'
+        }
+    }
+
 # Custom CSS for dark mode enhancements
 st.markdown("""
 <style>
@@ -70,29 +85,57 @@ with st.sidebar:
         help="Service account credentials for Google Sheets API"
     )
     
-    # Sheet name input
+    # Sheet name input with persistent value
     sheet_name = st.text_input(
         "Google Sheet name", 
-        value="2025",
+        value=st.session_state.settings['sheet_name'],
         help="The name of your Google Sheet"
     )
     
-    # Worksheet name input
+    # Worksheet name input with persistent value
     worksheet_name = st.text_input(
         "Worksheet/Tab name", 
-        value="Veckomål",
+        value=st.session_state.settings['worksheet_name'],
         help="The name of the specific tab within your Google Sheet"
     )
     
-    # Data range input
+    # Data range input with persistent value
     data_range = st.text_input(
         "Data range", 
-        value="A1:AE100",
+        value=st.session_state.settings['data_range'],
         help="Range of cells to fetch (e.g., A1:Z100)"
     )
     
     # Fetch data button
     fetch_button = st.button("Fetch Data", type="primary")
+    
+    st.markdown("---")
+    st.markdown("### Graph Settings")
+    
+    # Graph customization options
+    with st.expander("Customize Graphs", expanded=False):
+        # Figure size
+        fig_width = st.slider("Figure Width", 8, 20, int(st.session_state.settings['graph_settings']['figsize'][0]))
+        fig_height = st.slider("Figure Height", 4, 12, int(st.session_state.settings['graph_settings']['figsize'][1]))
+        
+        # Grid and markers
+        show_grid = st.checkbox("Show Grid", value=st.session_state.settings['graph_settings']['show_grid'])
+        show_markers = st.checkbox("Show Markers", value=st.session_state.settings['graph_settings']['show_markers'])
+        
+        # Colors
+        goal_color = st.color_picker("Goal Color", value=st.session_state.settings['graph_settings']['goal_color'])
+        outcome_color = st.color_picker("Outcome Color", value=st.session_state.settings['graph_settings']['outcome_color'])
+        
+        # Save settings button
+        if st.button("Save Graph Settings"):
+            st.session_state.settings['graph_settings'].update({
+                'figsize': (fig_width, fig_height),
+                'show_grid': show_grid,
+                'show_markers': show_markers,
+                'goal_color': goal_color,
+                'outcome_color': outcome_color
+            })
+            st.success("Graph settings saved!")
     
     st.markdown("---")
     st.markdown("### Visualization Options")
@@ -106,7 +149,15 @@ with st.sidebar:
             "View specific category",
             ["All Categories"] + all_categories
         )
-    
+
+# Save settings when inputs change
+if sheet_name != st.session_state.settings['sheet_name']:
+    st.session_state.settings['sheet_name'] = sheet_name
+if worksheet_name != st.session_state.settings['worksheet_name']:
+    st.session_state.settings['worksheet_name'] = worksheet_name
+if data_range != st.session_state.settings['data_range']:
+    st.session_state.settings['data_range'] = data_range
+
 # Main content
 if uploaded_creds is not None and fetch_button:
     # Save the credentials temporarily
@@ -183,8 +234,16 @@ if 'data' in st.session_state:
     tab1, tab2, tab3 = st.tabs(["Category Groups 📊", "Individual Metrics 📈", "Raw Data 📋"])
     
     with tab1:
-        # Create visualizer
+        # Create visualizer with custom settings
         visualizer = BalthazarVisualizer(df)
+        visualizer.colors = {
+            "Mål": st.session_state.settings['graph_settings']['goal_color'],
+            "Utfall": st.session_state.settings['graph_settings']['outcome_color']
+        }
+        visualizer.show_markers = st.session_state.settings['graph_settings']['show_markers']
+        visualizer.show_grid = st.session_state.settings['graph_settings']['show_grid']
+        visualizer.default_figsize = st.session_state.settings['graph_settings']['figsize']
+        
         figures = visualizer.create_summary_dashboard()
         
         # Display each group in an expander
@@ -194,8 +253,16 @@ if 'data' in st.session_state:
     
     with tab2:
         if 'selected_category' in locals() and selected_category != "All Categories":
-            # Create individual category visualization
+            # Create individual category visualization with custom settings
             visualizer = BalthazarVisualizer(df)
+            visualizer.colors = {
+                "Mål": st.session_state.settings['graph_settings']['goal_color'],
+                "Utfall": st.session_state.settings['graph_settings']['outcome_color']
+            }
+            visualizer.show_markers = st.session_state.settings['graph_settings']['show_markers']
+            visualizer.show_grid = st.session_state.settings['graph_settings']['show_grid']
+            visualizer.default_figsize = st.session_state.settings['graph_settings']['figsize']
+            
             fig = visualizer.create_metric_comparison(selected_category)
             st.pyplot(fig)
         else:

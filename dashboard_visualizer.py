@@ -18,7 +18,10 @@ class BalthazarVisualizer:
         # Set Seaborn style for dark theme
         sns.set_theme(style="darkgrid")
         
-        # Define color palette for consistent visualization
+        # Default settings
+        self.default_figsize = (10, 6)
+        self.show_markers = True
+        self.show_grid = True
         self.colors = {
             "Mål": "#00BFFF",  # Deep Sky Blue for goals
             "Utfall": "#FF4B4B"  # Red for outcomes
@@ -53,7 +56,7 @@ class BalthazarVisualizer:
         # Sort by Date
         self.df = self.df.sort_values("Date")
         
-    def create_metric_comparison(self, category, figsize=(10, 6)):
+    def create_metric_comparison(self, category, figsize=None):
         """
         Create a comparison plot of goals vs. outcomes for a specific category.
         
@@ -64,6 +67,9 @@ class BalthazarVisualizer:
         Returns:
             matplotlib Figure object
         """
+        if figsize is None:
+            figsize = self.default_figsize
+            
         fig, ax = plt.subplots(figsize=figsize)
         
         # Filter data for the given category
@@ -80,7 +86,7 @@ class BalthazarVisualizer:
             y="Value",
             hue="Type",
             palette=self.colors,
-            markers=True,
+            markers=self.show_markers,
             ax=ax
         )
         
@@ -95,15 +101,16 @@ class BalthazarVisualizer:
         # Add legend
         ax.legend(title="", frameon=True, facecolor="#262730", edgecolor="#666666")
         
-        # Add grid
-        ax.grid(True, linestyle="--", alpha=0.7, color="#444444")
+        # Add grid if enabled
+        if self.show_grid:
+            ax.grid(True, linestyle="--", alpha=0.7, color="#444444")
         
         # Tight layout
         fig.tight_layout()
         
         return fig
         
-    def create_category_group_plots(self, categories, group_name, figsize=(15, 10)):
+    def create_category_group_plots(self, categories, group_name, figsize=None):
         """
         Create a multi-plot figure with comparisons for a group of categories.
         
@@ -115,6 +122,9 @@ class BalthazarVisualizer:
         Returns:
             matplotlib Figure object
         """
+        if figsize is None:
+            figsize = self.default_figsize
+            
         # Calculate grid size based on number of categories
         n_cats = len(categories)
         n_cols = min(2, n_cats)
@@ -145,7 +155,7 @@ class BalthazarVisualizer:
                     y="Value",
                     hue="Type",
                     palette=self.colors,
-                    markers=True,
+                    markers=self.show_markers,
                     ax=axes[i]
                 )
                 
@@ -157,8 +167,9 @@ class BalthazarVisualizer:
                 # Format x-axis ticks
                 axes[i].set_xticks(cat_df["Date"].unique())
                 
-                # Add grid
-                axes[i].grid(True, linestyle="--", alpha=0.7, color="#444444")
+                # Add grid if enabled
+                if self.show_grid:
+                    axes[i].grid(True, linestyle="--", alpha=0.7, color="#444444")
                 
                 # Set legend
                 axes[i].legend(frameon=True, facecolor="#262730", edgecolor="#666666")
