@@ -140,11 +140,35 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### Visualization Options")
     
-    # Category selections
+    # Week range selector and category selections
     if 'data' in st.session_state:
         df = st.session_state.data
-        all_categories = sorted(df["Category"].unique())
         
+        # Calculate available weeks
+        df["Week"] = ((df["Date"] - 1) // 7) + 1
+        available_weeks = sorted(df["Week"].unique())
+        
+        if available_weeks:
+            min_week = int(min(available_weeks))
+            max_week = int(max(available_weeks))
+            
+            # If we only have one week, just display it
+            if min_week == max_week:
+                st.markdown(f"#### Current Week: {min_week}")
+                st.session_state.week_range = (min_week, min_week)
+            else:
+                st.markdown("#### Week Range")
+                # Use a slider for better UX
+                week_range = st.slider(
+                    "Select week range",
+                    min_value=min_week,
+                    max_value=max_week,
+                    value=(min_week, max_week),
+                    key="week_range_slider"
+                )
+                st.session_state.week_range = week_range
+        
+        all_categories = sorted(df["Category"].unique())
         selected_category = st.selectbox(
             "View specific category",
             ["All Categories"] + all_categories
@@ -245,14 +269,22 @@ if 'data' in st.session_state:
         visualizer.default_figsize = st.session_state.settings['graph_settings']['figsize']
         
         # Create dashboard visualizations
-        figures = visualizer.create_summary_dashboard(x_range=(1, 4))  # Show weeks 1-4 by default
+        week_range = getattr(st.session_state, 'week_range', None)
+        figures = visualizer.create_summary_dashboard(x_range=week_range)  # Use selected week range
+        
+        # Ensure static directory exists
+        os.makedirs("static", exist_ok=True)
         
         # Save figures to files
         for group_name, fig in figures.items():
-            # Create filename from group name
-            filename = f"static/{group_name.lower().replace(' ', '_')}.png"
-            fig.savefig(filename, dpi=300, bbox_inches="tight")
-            plt.close(fig)
+            try:
+                # Create filename from group name
+                filename = f"static/{group_name.lower().replace(' ', '_')}.png"
+                fig.savefig(filename, dpi=300, bbox_inches="tight")
+            except Exception as e:
+                st.warning(f"Failed to save {group_name} plot: {str(e)}")
+            finally:
+                plt.close(fig)
         
         # Display each group in an expander
         for group_name, fig in figures.items():
@@ -271,7 +303,9 @@ if 'data' in st.session_state:
             visualizer.show_grid = st.session_state.settings['graph_settings']['show_grid']
             visualizer.default_figsize = st.session_state.settings['graph_settings']['figsize']
             
-            fig = visualizer.create_metric_comparison(selected_category)
+            # Use selected week range for individual metrics
+            week_range = getattr(st.session_state, 'week_range', None)
+            fig = visualizer.create_metric_comparison(selected_category, x_range=week_range)
             st.pyplot(fig)
         else:
             st.info("Select a specific category from the sidebar to see detailed metrics.")
