@@ -221,6 +221,9 @@ class BalthazarVisualizer:
             print(f"Goal data: {len(goal_df)} rows")
             if not goal_df.empty:
                 print(f"Goal data sample: {goal_df.head(3)}")
+                # Debug: Check if there are any zero values
+                zero_goals = goal_df[goal_df["Value"] == 0]
+                print(f"Zero value goals: {len(zero_goals)} rows - {zero_goals['Week'].tolist() if not zero_goals.empty else []}")
                 
                 # Create a complete dataframe with all weeks
                 complete_goal_df = pd.DataFrame({"Week": weeks})
@@ -231,6 +234,9 @@ class BalthazarVisualizer:
                 # Convert to native Python types to avoid PyArrow issues
                 goal_x = [int(x) for x in goal_df["Week"].tolist()]
                 goal_y = [float(y) if not pd.isna(y) else 0.0 for y in goal_df["Value"].tolist()]
+                # Debug: Print processed goal data
+                print(f"Processed goal data - Weeks: {goal_x}")
+                print(f"Processed goal data - Values: {goal_y}")
             else:
                 goal_x = []
                 goal_y = []
@@ -262,6 +268,7 @@ class BalthazarVisualizer:
             # Plot goals (dotted line)
             if goal_x:
                 print(f"Plotting goals: {goal_x}, {goal_y}")
+                # Ensure we're plotting all values, even zeros
                 ax.plot(
                     goal_x,
                     goal_y,
@@ -270,12 +277,14 @@ class BalthazarVisualizer:
                     marker="o" if self.show_markers else None,
                     label="Mål",
                     linewidth=2.5,
-                    markersize=8
+                    markersize=8,
+                    drawstyle='steps-post'  # This ensures we don't skip zero values in the line
                 )
                 
             # Plot outcomes (solid line)
             if outcome_x:
                 print(f"Plotting outcomes: {outcome_x}, {outcome_y}")
+                # Ensure we're plotting all values, even zeros
                 ax.plot(
                     outcome_x,
                     outcome_y,
@@ -284,7 +293,8 @@ class BalthazarVisualizer:
                     marker="o" if self.show_markers else None,
                     label="Utfall",
                     linewidth=2.5,
-                    markersize=8
+                    markersize=8,
+                    drawstyle='steps-post'  # This ensures we don't skip zero values in the line
                 )
             
             # Set plot title and labels
@@ -441,6 +451,10 @@ class BalthazarVisualizer:
                     complete_goals = pd.merge(complete_weeks_df, goals, on="Week", how="left")
                     complete_goals["Value"] = complete_goals["Value"].fillna(0)
                     
+                    # Debug: Check for zero values
+                    zero_goals = complete_goals[complete_goals["Value"] == 0]
+                    print(f"Category '{category}' - Zero value goals: {len(zero_goals)} rows")
+                    
                     # Plot goals (dotted line)
                     axes[i].plot(
                         complete_goals["Week"], 
@@ -450,7 +464,8 @@ class BalthazarVisualizer:
                         marker="o" if self.show_markers else None,
                         label="Mål",
                         linewidth=2.5,
-                        markersize=6
+                        markersize=6,
+                        drawstyle='steps-post'  # Ensure we don't skip zero values
                     )
                 
                 # Process outcome data - fill gaps with zeros
@@ -458,6 +473,10 @@ class BalthazarVisualizer:
                     # Merge with actual data, filling in gaps with zeros
                     complete_outcomes = pd.merge(complete_weeks_df, outcomes, on="Week", how="left")
                     complete_outcomes["Value"] = complete_outcomes["Value"].fillna(0)
+                    
+                    # Debug: Check for zero values
+                    zero_outcomes = complete_outcomes[complete_outcomes["Value"] == 0]
+                    print(f"Category '{category}' - Zero value outcomes: {len(zero_outcomes)} rows")
                     
                     # Plot outcomes (solid line)
                     axes[i].plot(
@@ -468,7 +487,8 @@ class BalthazarVisualizer:
                         marker="o" if self.show_markers else None,
                         label="Utfall",
                         linewidth=2.5,
-                        markersize=6
+                        markersize=6,
+                        drawstyle='steps-post'  # Ensure we don't skip zero values
                     )
                 elif not goals.empty:
                     # If there's no outcome data but we have goals, create zero outcomes for all weeks
@@ -480,7 +500,8 @@ class BalthazarVisualizer:
                         marker="o" if self.show_markers else None,
                         label="Utfall",
                         linewidth=2.5,
-                        markersize=6
+                        markersize=6,
+                        drawstyle='steps-post'  # Ensure we don't skip zero values
                     )
                 
                 # Basic plot settings
