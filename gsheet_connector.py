@@ -199,16 +199,15 @@ class BalthazarGSheetConnector:
                             if isinstance(value, str):
                                 value = value.replace(',', '.').replace(' ', '')
                                 
-                            # Convert to float, skip empty cells or explicit '0' values
-                            if value != 0 and value != '0':
-                                numeric_value = float(value)
-                                records.append({
-                                    "Date": int(week_num), 
-                                    "Category": metric_category, 
-                                    "Type": row_type, 
-                                    "Value": numeric_value
-                                })
-                                print(f"  - Added record: Date={week_num}, Category={metric_category}, Type={row_type}, Value={numeric_value}")
+                            # Convert to float, including zero values (only skip empty cells)
+                            numeric_value = float(value)
+                            records.append({
+                                "Date": int(week_num), 
+                                "Category": metric_category, 
+                                "Type": row_type, 
+                                "Value": numeric_value
+                            })
+                            print(f"  - Added record: Date={week_num}, Category={metric_category}, Type={row_type}, Value={numeric_value}")
                         except (ValueError, TypeError) as e:
                             print(f"  - Skipping value '{value}': {e}")
                 
@@ -227,16 +226,15 @@ class BalthazarGSheetConnector:
                             if isinstance(value, str):
                                 value = value.replace(',', '.').replace(' ', '')
                                 
-                            # Convert to float, skip empty cells or explicit '0' values
-                            if value != 0 and value != '0':
-                                numeric_value = float(value)
-                                records.append({
-                                    "Date": int(week_num), 
-                                    "Category": metric_category, 
-                                    "Type": row_type, 
-                                    "Value": numeric_value
-                                })
-                                print(f"  - Added record: Date={week_num}, Category={metric_category}, Type={row_type}, Value={numeric_value}")
+                            # Convert to float, including zero values (only skip empty cells)
+                            numeric_value = float(value)
+                            records.append({
+                                "Date": int(week_num), 
+                                "Category": metric_category, 
+                                "Type": row_type, 
+                                "Value": numeric_value
+                            })
+                            print(f"  - Added record: Date={week_num}, Category={metric_category}, Type={row_type}, Value={numeric_value}")
                         except (ValueError, TypeError) as e:
                             print(f"  - Skipping value '{value}': {e}")
             
@@ -280,16 +278,15 @@ class BalthazarGSheetConnector:
                                 if isinstance(value, str):
                                     value = value.replace(',', '.').replace(' ', '')
                                     
-                                # Convert to float, skip empty cells or explicit '0' values
-                                if value != 0 and value != '0':
-                                    numeric_value = float(value)
-                                    records.append({
-                                        "Date": int(week_num), 
-                                        "Category": metric_category, 
-                                        "Type": row_type, 
-                                        "Value": numeric_value
-                                    })
-                                    print(f"  - Added record: Date={week_num}, Category={metric_category}, Type={row_type}, Value={numeric_value}")
+                                # Convert to float, including zero values (only skip empty cells)
+                                numeric_value = float(value)
+                                records.append({
+                                    "Date": int(week_num), 
+                                    "Category": metric_category, 
+                                    "Type": row_type, 
+                                    "Value": numeric_value
+                                })
+                                print(f"  - Added record: Date={week_num}, Category={metric_category}, Type={row_type}, Value={numeric_value}")
                             except (ValueError, TypeError) as e:
                                 print(f"  - Skipping value '{value}': {e}")
         

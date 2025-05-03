@@ -216,31 +216,48 @@ class BalthazarVisualizer:
             # Check if this is a "lower is better" metric
             is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
             
-            # Filter non-NA values for goals - include zeros
-            goal_df = cat_df[cat_df["Type"] == "Mål"].dropna(subset=["Value"])
+            # Extract goal and outcome data
+            goal_df = cat_df[cat_df["Type"] == "Mål"].copy()
             print(f"Goal data: {len(goal_df)} rows")
             if not goal_df.empty:
                 print(f"Goal data sample: {goal_df.head(3)}")
                 
+                # Create a complete dataframe with all weeks
+                complete_goal_df = pd.DataFrame({"Week": weeks})
+                # Merge with actual data, filling in gaps with zeros
+                goal_df = pd.merge(complete_goal_df, goal_df, on="Week", how="left")
+                goal_df["Value"] = goal_df["Value"].fillna(0)
+                
                 # Convert to native Python types to avoid PyArrow issues
                 goal_x = [int(x) for x in goal_df["Week"].tolist()]
-                goal_y = [float(y) for y in goal_df["Value"].tolist()]
+                goal_y = [float(y) if not pd.isna(y) else 0.0 for y in goal_df["Value"].tolist()]
             else:
                 goal_x = []
                 goal_y = []
             
-            # Filter non-NA values for outcomes - include zeros
-            outcome_df = cat_df[cat_df["Type"] == "Utfall"].dropna(subset=["Value"])
+            # Extract outcome data
+            outcome_df = cat_df[cat_df["Type"] == "Utfall"].copy()
             print(f"Outcome data: {len(outcome_df)} rows")
             if not outcome_df.empty:
                 print(f"Outcome data sample: {outcome_df.head(3)}")
                 
+                # Create a complete dataframe with all weeks
+                complete_outcome_df = pd.DataFrame({"Week": weeks})
+                # Merge with actual data, filling in gaps with zeros
+                outcome_df = pd.merge(complete_outcome_df, outcome_df, on="Week", how="left")
+                outcome_df["Value"] = outcome_df["Value"].fillna(0)
+                
                 # Convert to native Python types to avoid PyArrow issues
                 outcome_x = [int(x) for x in outcome_df["Week"].tolist()]
-                outcome_y = [float(y) for y in outcome_df["Value"].tolist()]
+                outcome_y = [float(y) if not pd.isna(y) else 0.0 for y in outcome_df["Value"].tolist()]
             else:
-                outcome_x = []
-                outcome_y = []
+                # If there's no outcome data but we have goals, create zero outcomes for all weeks
+                if goal_x:
+                    outcome_x = goal_x.copy()
+                    outcome_y = [0.0] * len(goal_x)
+                else:
+                    outcome_x = []
+                    outcome_y = []
                 
             # Plot goals (dotted line)
             if goal_x:
@@ -411,29 +428,60 @@ class BalthazarVisualizer:
                 # Check if this is a "lower is better" metric
                 is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
                 
-                # Filter non-NA values for goals and outcomes
-                goals = cat_df[cat_df["Type"] == "Mål"].dropna(subset=["Value"])
-                outcomes = cat_df[cat_df["Type"] == "Utfall"].dropna(subset=["Value"])
+                # Extract goal and outcome data
+                goals = cat_df[cat_df["Type"] == "Mål"].copy()
+                outcomes = cat_df[cat_df["Type"] == "Utfall"].copy()
                 
-                # Plot goals (dotted line)
+                # Create a complete dataframe with all weeks in range
+                complete_weeks_df = pd.DataFrame({"Week": weeks})
+                
+                # Process goal data - fill gaps with zeros
                 if not goals.empty:
-                    axes[i].plot(goals["Week"], goals["Value"], 
-                               color=self.colors["Mål"], 
-                               linestyle=":", 
-                               marker="o" if self.show_markers else None,
-                               label="Mål",
-                               linewidth=2.5,
-                               markersize=8)
+                    # Merge with actual data, filling in gaps with zeros
+                    complete_goals = pd.merge(complete_weeks_df, goals, on="Week", how="left")
+                    complete_goals["Value"] = complete_goals["Value"].fillna(0)
+                    
+                    # Plot goals (dotted line)
+                    axes[i].plot(
+                        complete_goals["Week"], 
+                        complete_goals["Value"], 
+                        color=self.colors["Mål"], 
+                        linestyle=":", 
+                        marker="o" if self.show_markers else None,
+                        label="Mål",
+                        linewidth=2.5,
+                        markersize=6
+                    )
                 
-                # Plot outcomes (solid line)
+                # Process outcome data - fill gaps with zeros
                 if not outcomes.empty:
-                    axes[i].plot(outcomes["Week"], outcomes["Value"], 
-                               color=self.colors["Utfall"], 
-                               linestyle="-", 
-                               marker="o" if self.show_markers else None,
-                               label="Utfall",
-                               linewidth=2.5,
-                               markersize=8)
+                    # Merge with actual data, filling in gaps with zeros
+                    complete_outcomes = pd.merge(complete_weeks_df, outcomes, on="Week", how="left")
+                    complete_outcomes["Value"] = complete_outcomes["Value"].fillna(0)
+                    
+                    # Plot outcomes (solid line)
+                    axes[i].plot(
+                        complete_outcomes["Week"], 
+                        complete_outcomes["Value"], 
+                        color=self.colors["Utfall"], 
+                        linestyle="-", 
+                        marker="o" if self.show_markers else None,
+                        label="Utfall",
+                        linewidth=2.5,
+                        markersize=6
+                    )
+                elif not goals.empty:
+                    # If there's no outcome data but we have goals, create zero outcomes for all weeks
+                    axes[i].plot(
+                        weeks,
+                        [0.0] * len(weeks),
+                        color=self.colors["Utfall"],
+                        linestyle="-",
+                        marker="o" if self.show_markers else None,
+                        label="Utfall",
+                        linewidth=2.5,
+                        markersize=6
+                    )
                 
                 # Basic plot settings
                 axes[i].set_title(category, color="#FFFFFF")
@@ -850,33 +898,63 @@ class BalthazarVisualizer:
                 for category in financial:
                     cat_data = self.data[self.data["Category"] == category]
                     
-                    # Plot goals
-                    goals = cat_data[cat_data["Type"] == "Mål"].dropna(subset=["Value"])
-                    if not goals.empty:
-                        fig.add_trace(
-                            go.Scatter(
-                                x=goals["Week"],
-                                y=goals["Value"],
-                                mode="lines+markers",
-                                name=f"{category} - Mål",
-                                line=dict(dash="dot", color=self.colors["Mål"]),
-                                legendgroup=category
+                    # Get all weeks for this category
+                    all_weeks = sorted(cat_data["Week"].unique())
+                    if all_weeks:
+                        min_week = min(all_weeks)
+                        max_week = max(all_weeks)
+                        weeks = list(range(min_week, max_week + 1))
+                        
+                        # Create a complete weeks dataframe for filling gaps
+                        weeks_df = pd.DataFrame({"Week": weeks})
+                        
+                        # Process goal data
+                        goals = cat_data[cat_data["Type"] == "Mål"].copy()
+                        if not goals.empty:
+                            # Merge with all weeks and fill gaps with zeros
+                            complete_goals = pd.merge(weeks_df, goals, on="Week", how="left")
+                            complete_goals["Value"] = complete_goals["Value"].fillna(0)
+                            
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=complete_goals["Week"],
+                                    y=complete_goals["Value"],
+                                    mode="lines+markers",
+                                    name=f"{category} - Mål",
+                                    line=dict(dash="dot", color=self.colors["Mål"]),
+                                    legendgroup=category
+                                )
                             )
-                        )
-                    
-                    # Plot outcomes
-                    outcomes = cat_data[cat_data["Type"] == "Utfall"].dropna(subset=["Value"])
-                    if not outcomes.empty:
-                        fig.add_trace(
-                            go.Scatter(
-                                x=outcomes["Week"],
-                                y=outcomes["Value"],
-                                mode="lines+markers",
-                                name=f"{category} - Utfall",
-                                line=dict(color=self.colors["Utfall"]),
-                                legendgroup=category
+                        
+                        # Process outcome data
+                        outcomes = cat_data[cat_data["Type"] == "Utfall"].copy()
+                        if not outcomes.empty:
+                            # Merge with all weeks and fill gaps with zeros
+                            complete_outcomes = pd.merge(weeks_df, outcomes, on="Week", how="left")
+                            complete_outcomes["Value"] = complete_outcomes["Value"].fillna(0)
+                            
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=complete_outcomes["Week"],
+                                    y=complete_outcomes["Value"],
+                                    mode="lines+markers",
+                                    name=f"{category} - Utfall",
+                                    line=dict(color=self.colors["Utfall"]),
+                                    legendgroup=category
+                                )
                             )
-                        )
+                        elif not goals.empty:
+                            # If no outcomes but we have goals, show zero outcomes
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=weeks,
+                                    y=[0.0] * len(weeks),
+                                    mode="lines+markers",
+                                    name=f"{category} - Utfall",
+                                    line=dict(color=self.colors["Utfall"]),
+                                    legendgroup=category
+                                )
+                            )
                 
                 # Update layout
                 fig.update_layout(
@@ -903,33 +981,63 @@ class BalthazarVisualizer:
                 for category in productivity:
                     cat_data = self.data[self.data["Category"] == category]
                     
-                    # Plot goals
-                    goals = cat_data[cat_data["Type"] == "Mål"].dropna(subset=["Value"])
-                    if not goals.empty:
-                        fig.add_trace(
-                            go.Scatter(
-                                x=goals["Week"],
-                                y=goals["Value"],
-                                mode="lines+markers",
-                                name=f"{category} - Mål",
-                                line=dict(dash="dot", color=self.colors["Mål"]),
-                                legendgroup=category
+                    # Get all weeks for this category
+                    all_weeks = sorted(cat_data["Week"].unique())
+                    if all_weeks:
+                        min_week = min(all_weeks)
+                        max_week = max(all_weeks)
+                        weeks = list(range(min_week, max_week + 1))
+                        
+                        # Create a complete weeks dataframe for filling gaps
+                        weeks_df = pd.DataFrame({"Week": weeks})
+                        
+                        # Process goal data
+                        goals = cat_data[cat_data["Type"] == "Mål"].copy()
+                        if not goals.empty:
+                            # Merge with all weeks and fill gaps with zeros
+                            complete_goals = pd.merge(weeks_df, goals, on="Week", how="left")
+                            complete_goals["Value"] = complete_goals["Value"].fillna(0)
+                            
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=complete_goals["Week"],
+                                    y=complete_goals["Value"],
+                                    mode="lines+markers",
+                                    name=f"{category} - Mål",
+                                    line=dict(dash="dot", color=self.colors["Mål"]),
+                                    legendgroup=category
+                                )
                             )
-                        )
-                    
-                    # Plot outcomes
-                    outcomes = cat_data[cat_data["Type"] == "Utfall"].dropna(subset=["Value"])
-                    if not outcomes.empty:
-                        fig.add_trace(
-                            go.Scatter(
-                                x=outcomes["Week"],
-                                y=outcomes["Value"],
-                                mode="lines+markers",
-                                name=f"{category} - Utfall",
-                                line=dict(color=self.colors["Utfall"]),
-                                legendgroup=category
+                        
+                        # Process outcome data
+                        outcomes = cat_data[cat_data["Type"] == "Utfall"].copy()
+                        if not outcomes.empty:
+                            # Merge with all weeks and fill gaps with zeros
+                            complete_outcomes = pd.merge(weeks_df, outcomes, on="Week", how="left")
+                            complete_outcomes["Value"] = complete_outcomes["Value"].fillna(0)
+                            
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=complete_outcomes["Week"],
+                                    y=complete_outcomes["Value"],
+                                    mode="lines+markers",
+                                    name=f"{category} - Utfall",
+                                    line=dict(color=self.colors["Utfall"]),
+                                    legendgroup=category
+                                )
                             )
-                        )
+                        elif not goals.empty:
+                            # If no outcomes but we have goals, show zero outcomes
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=weeks,
+                                    y=[0.0] * len(weeks),
+                                    mode="lines+markers",
+                                    name=f"{category} - Utfall",
+                                    line=dict(color=self.colors["Utfall"]),
+                                    legendgroup=category
+                                )
+                            )
                 
                 # Update layout
                 fig.update_layout(
@@ -956,33 +1064,51 @@ class BalthazarVisualizer:
                 for category in content:
                     cat_data = self.data[self.data["Category"] == category]
                     
-                    # Plot goals
-                    goals = cat_data[cat_data["Type"] == "Mål"].dropna(subset=["Value"])
-                    if not goals.empty:
-                        fig.add_trace(
-                            go.Scatter(
-                                x=goals["Week"],
-                                y=goals["Value"],
-                                mode="lines+markers",
-                                name=f"{category} - Mål",
-                                line=dict(dash="dot", color=self.colors["Mål"]),
-                                legendgroup=category
+                    # Get all weeks for this category
+                    all_weeks = sorted(cat_data["Week"].unique())
+                    if all_weeks:
+                        min_week = min(all_weeks)
+                        max_week = max(all_weeks)
+                        weeks = list(range(min_week, max_week + 1))
+                        
+                        # Create a complete weeks dataframe for filling gaps
+                        weeks_df = pd.DataFrame({"Week": weeks})
+                        
+                        # Process goal data
+                        goals = cat_data[cat_data["Type"] == "Mål"].copy()
+                        if not goals.empty:
+                            # Merge with all weeks and fill gaps with zeros
+                            complete_goals = pd.merge(weeks_df, goals, on="Week", how="left")
+                            complete_goals["Value"] = complete_goals["Value"].fillna(0)
+                            
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=complete_goals["Week"],
+                                    y=complete_goals["Value"],
+                                    mode="lines+markers",
+                                    name=f"{category} - Mål",
+                                    line=dict(dash="dot", color=self.colors["Mål"]),
+                                    legendgroup=category
+                                )
                             )
-                        )
-                    
-                    # Plot outcomes
-                    outcomes = cat_data[cat_data["Type"] == "Utfall"].dropna(subset=["Value"])
-                    if not outcomes.empty:
-                        fig.add_trace(
-                            go.Scatter(
-                                x=outcomes["Week"],
-                                y=outcomes["Value"],
-                                mode="lines+markers",
-                                name=f"{category} - Utfall",
-                                line=dict(color=self.colors["Utfall"]),
-                                legendgroup=category
+                        
+                        # Process outcome data
+                        outcomes = cat_data[cat_data["Type"] == "Utfall"].copy()
+                        if not outcomes.empty:
+                            # Merge with all weeks and fill gaps with zeros
+                            complete_outcomes = pd.merge(weeks_df, outcomes, on="Week", how="left")
+                            complete_outcomes["Value"] = complete_outcomes["Value"].fillna(0)
+                            
+                            fig.add_trace(
+                                go.Scatter(
+                                    x=complete_outcomes["Week"],
+                                    y=complete_outcomes["Value"],
+                                    mode="lines+markers",
+                                    name=f"{category} - Utfall",
+                                    line=dict(color=self.colors["Utfall"]),
+                                    legendgroup=category
+                                )
                             )
-                        )
                 
                 # Update layout
                 fig.update_layout(
