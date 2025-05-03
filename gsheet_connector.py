@@ -166,6 +166,13 @@ class BalthazarGSheetConnector:
         records = []
         skip_rows = week_row_idx + 1  # Skip header rows
         
+        # Function to normalize category names (fix typos, etc.)
+        def normalize_category(category):
+            # Fix the spelling issue with "Gratis vertyg" vs "Gratis verktyg"
+            if category == "Gratis vertyg hemsida (SEO)":
+                return "Gratis verktyg hemsida (SEO)"
+            return category
+            
         # Process each row in the data
         row_idx = 0
         while row_idx < len(data):
@@ -186,7 +193,7 @@ class BalthazarGSheetConnector:
                 
             if row_label.startswith("Mål:"):
                 # This is a goal (Mål) row
-                metric_category = row_label.replace("Mål:", "").strip()
+                metric_category = normalize_category(row_label.replace("Mål:", "").strip())
                 row_type = "Mål"
                 print(f"Found Goal row for: {metric_category}")
                 
@@ -213,7 +220,7 @@ class BalthazarGSheetConnector:
                 
             elif row_label.startswith("Utfall:"):
                 # This is an outcome (Utfall) row
-                metric_category = row_label.replace("Utfall:", "").strip()
+                metric_category = normalize_category(row_label.replace("Utfall:", "").strip())
                 row_type = "Utfall"
                 print(f"Found Outcome row for: {metric_category}")
                 
@@ -266,7 +273,7 @@ class BalthazarGSheetConnector:
                                 is_goal = False
                     
                     row_type = "Mål" if is_goal else "Utfall"
-                    metric_category = row_label
+                    metric_category = normalize_category(row_label)
                     print(f"Found {row_type} row for: {metric_category} (inferred)")
                     
                     # Process values for each week
