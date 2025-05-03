@@ -34,6 +34,9 @@ if 'settings' not in st.session_state:
         }
     }
 
+# Flag to track if we should auto-fetch data
+auto_fetch_data = False
+
 # Initialize visualizer for storage access
 if 'visualizer' not in st.session_state:
     st.session_state.visualizer = BalthazarVisualizer(None)
@@ -54,6 +57,8 @@ if st.session_state.visualizer.has_config():
             # Save credentials to file for use
             with open("temp_credentials.json", "w") as f:
                 f.write(saved_config['credentials_json'])
+            # Set flag to auto-fetch if we have saved credentials
+            auto_fetch_data = True
 
 # Try to load saved data if exists
 if 'data' not in st.session_state and st.session_state.visualizer.has_browser_data():
@@ -113,27 +118,42 @@ st.markdown("---")
 with st.sidebar:
     st.header("Configuration")
     
-    # File uploader for credentials
-    uploaded_creds = st.file_uploader(
-        "Upload Google credentials JSON file", 
-        type=["json"], 
-        help="Service account credentials for Google Sheets API"
-    )
+    # Check if credentials already exist
+    credentials_loaded = 'credentials_json' in st.session_state
     
-    # Credentials text area as an alternative
-    if 'credentials_json' in st.session_state:
-        credentials_json = st.text_area(
-            "Or paste credentials JSON here",
-            value=st.session_state.credentials_json,
-            height=100,
-            help="Paste your Google Service Account credentials JSON"
+    if credentials_loaded:
+        st.success("✅ Credentials loaded")
+        
+        # Show credential info summary
+        with st.expander("Credential Details", expanded=False):
+            # Just show a masked summary, not the full credentials
+            st.text("Credentials are securely stored")
+            # Show sheet and worksheet info
+            st.text(f"Sheet: {st.session_state.settings['sheet_name']}")
+            st.text(f"Worksheet: {st.session_state.settings['worksheet_name']}")
+    
+    # File uploader for credentials - only show if no credentials loaded or in the expander
+    with st.expander("Upload New Credentials", expanded=not credentials_loaded):
+        uploaded_creds = st.file_uploader(
+            "Upload Google credentials JSON file", 
+            type=["json"], 
+            help="Service account credentials for Google Sheets API"
         )
-    else:
-        credentials_json = st.text_area(
-            "Or paste credentials JSON here",
-            height=100,
-            help="Paste your Google Service Account credentials JSON"
-        )
+        
+        # Credentials text area as an alternative
+        if credentials_loaded:
+            credentials_json = st.text_area(
+                "Or edit current credentials JSON",
+                value=st.session_state.credentials_json,
+                height=100,
+                help="Your Google Service Account credentials JSON"
+            )
+        else:
+            credentials_json = st.text_area(
+                "Or paste credentials JSON here",
+                height=100,
+                help="Paste your Google Service Account credentials JSON"
+            )
     
     # Sheet name input with persistent value
     sheet_name = st.text_input(
@@ -156,28 +176,62 @@ with st.sidebar:
         help="Range of cells to fetch (e.g., A1:Z100)"
     )
     
-    # Save configuration button
-    if st.button("Save Configuration"):
-        config = {
-            'sheet_name': sheet_name,
-            'worksheet_name': worksheet_name,
-            'data_range': data_range,
-        }
-        
-        if credentials_json:
-            config['credentials_json'] = credentials_json
+    # Save configuration button and clear credentials in the same row
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Save Configuration", type="primary"):
+            config = {
+                'sheet_name': sheet_name,
+                'worksheet_name': worksheet_name,
+                'data_range': data_range,
+            }
             
-        success = st.session_state.visualizer.save_config(config)
-        if success:
-            st.success("Configuration saved!")
-            # Update session state
-            st.session_state.settings['sheet_name'] = sheet_name
-            st.session_state.settings['worksheet_name'] = worksheet_name
-            st.session_state.settings['data_range'] = data_range
-            if credentials_json:
+            # If we have credentials from upload or text area, include them
+            if uploaded_creds is not None:
+                with open("temp_credentials.json", "wb") as f:
+                    f.write(uploaded_creds.getvalue())
+                with open("temp_credentials.json", "r") as f:
+                    config['credentials_json'] = f.read()
+                st.session_state.credentials_json = config['credentials_json']
+            elif credentials_json:
+                config['credentials_json'] = credentials_json
+                with open("temp_credentials.json", "w") as f:
+                    f.write(credentials_json)
                 st.session_state.credentials_json = credentials_json
-        else:
-            st.error("Failed to save configuration.")
+            
+            success = st.session_state.visualizer.save_config(config)
+            if success:
+                st.success("Configuration saved!")
+                # Update session state
+                st.session_state.settings['sheet_name'] = sheet_name
+                st.session_state.settings['worksheet_name'] = worksheet_name
+                st.session_state.settings['data_range'] = data_range
+                # Trigger a rerun to apply settings
+                st.experimental_rerun()
+            else:
+                st.error("Failed to save configuration.")
+    
+    with col2:
+        if st.button("Clear Credentials", type="secondary"):
+            if 'credentials_json' in st.session_state:
+                del st.session_state.credentials_json
+            
+            # Update config without credentials
+            config = {
+                'sheet_name': sheet_name,
+                'worksheet_name': worksheet_name,
+                'data_range': data_range,
+            }
+            
+            success = st.session_state.visualizer.save_config(config)
+            if success:
+                st.success("Credentials cleared!")
+                if os.path.exists("temp_credentials.json"):
+                    os.remove("temp_credentials.json")
+                # Trigger a rerun to apply changes
+                st.experimental_rerun()
+            else:
+                st.error("Failed to clear credentials.")
     
     # Fetch data button
     fetch_button = st.button("Fetch Data", type="primary")
@@ -297,31 +351,25 @@ with st.sidebar:
         )
 
 # Main content
-if (uploaded_creds is not None or credentials_json) and fetch_button:
+# Function to fetch data using the current credentials and settings
+def fetch_data_from_google():
     # Status message
     status = st.status("Connecting to Google Sheet...")
     
     try:
-        # Save the credentials temporarily
+        # Use existing temp_credentials.json if it exists
         temp_cred_path = "temp_credentials.json"
         
-        if uploaded_creds is not None:
-            with open(temp_cred_path, "wb") as f:
-                f.write(uploaded_creds.getvalue())
-        elif credentials_json:
-            with open(temp_cred_path, "w") as f:
-                f.write(credentials_json)
-                # Update session state
-                st.session_state.credentials_json = credentials_json
-        
         # Connect to Google Sheet
-        connector = BalthazarGSheetConnector(temp_cred_path, sheet_name, worksheet_name)
+        connector = BalthazarGSheetConnector(temp_cred_path, 
+                                            st.session_state.settings['sheet_name'], 
+                                            st.session_state.settings['worksheet_name'])
         
         if connector.connect():
             status.update(label="Fetching data...")
             
             # Fetch and process data
-            raw_data = connector.get_data(data_range)
+            raw_data = connector.get_data(st.session_state.settings['data_range'])
             processed_data = connector.process_data(raw_data)
             
             if not processed_data.empty:
@@ -334,12 +382,12 @@ if (uploaded_creds is not None or credentials_json) and fetch_button:
                 
                 # Save the configuration
                 config = {
-                    'sheet_name': sheet_name,
-                    'worksheet_name': worksheet_name,
-                    'data_range': data_range,
+                    'sheet_name': st.session_state.settings['sheet_name'],
+                    'worksheet_name': st.session_state.settings['worksheet_name'],
+                    'data_range': st.session_state.settings['data_range'],
                 }
-                if credentials_json:
-                    config['credentials_json'] = credentials_json
+                if 'credentials_json' in st.session_state:
+                    config['credentials_json'] = st.session_state.credentials_json
                 
                 st.session_state.visualizer = BalthazarVisualizer(processed_data)
                 
@@ -374,6 +422,8 @@ if (uploaded_creds is not None or credentials_json) and fetch_button:
                     st.write(f"Categories: {sorted(processed_data['Category'].unique())}")
                     st.write(f"Types: {sorted(processed_data['Type'].unique())}")
                     st.write(f"Weeks: {sorted(processed_data['Date'].unique())}")
+                
+                return True
             else:
                 status.update(label="❌ No data found or processing error", state="error")
                 st.error("The data processing yielded an empty DataFrame. Please check the sheet structure.")
@@ -383,19 +433,30 @@ if (uploaded_creds is not None or credentials_json) and fetch_button:
                     st.subheader("Raw Data Preview")
                     st.write("First few rows of raw data from Google Sheets:")
                     st.write(raw_data[:5])
+                return False
         else:
             status.update(label="❌ Failed to connect to Google Sheet", state="error")
+            return False
     
     except Exception as e:
         status.update(label=f"❌ Error: {str(e)}", state="error")
         st.error(f"Error details: {str(e)}")
         import traceback
         st.code(traceback.format_exc(), language="python")
-    
-    finally:
-        # Clean up temporary credentials file
-        if os.path.exists(temp_cred_path) and temp_cred_path != "temp_credentials.json":
-            os.remove(temp_cred_path)
+        return False
+
+# Auto-fetch data if credentials are present and flag is set
+if auto_fetch_data and 'data' not in st.session_state and os.path.exists("temp_credentials.json"):
+    auto_fetch_success = fetch_data_from_google()
+    if auto_fetch_success:
+        st.success("Data automatically fetched on startup!")
+
+# Manual fetch when the button is clicked
+if fetch_button:
+    if os.path.exists("temp_credentials.json"):
+        fetch_data_from_google()
+    else:
+        st.error("No credentials found. Please upload credentials first.")
 
 # Display dashboard if data is available
 if 'data' in st.session_state and st.session_state.data is not None:
