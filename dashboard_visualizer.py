@@ -25,9 +25,12 @@ class BalthazarVisualizer:
         self.default_figsize = (10, 6)
         self.show_markers = True
         self.show_grid = True
+        self.show_current_week = False  # Default to not showing the current week marker
+        self.current_week = None  # Will be set by the caller
         self.colors = {
             "Mål": "#00BFFF",  # Deep Sky Blue for goals
-            "Utfall": "#FF4B4B"  # Red for outcomes
+            "Utfall": "#FF4B4B",  # Red for outcomes
+            "current_week": "#FFFF00"  # Yellow for current week marker
         }
         
         # Set darker figure style
@@ -170,202 +173,190 @@ class BalthazarVisualizer:
         Returns:
             matplotlib Figure object
         """
-        self.prepare_data()
-        
-        if figsize is None:
-            figsize = self.default_figsize
-            
-        # Create a new figure with higher DPI
-        fig = plt.figure(figsize=figsize, dpi=100)
-        ax = fig.add_subplot(111)
-        
-        # Filter data for the given category
         try:
-            cat_df = self.data[self.data["Category"] == category].copy()
-            print(f"Filtering for category: {category}")
-            print(f"Found {len(cat_df)} rows for this category")
-            print(f"Category data sample: {cat_df.head(3)}")
+            self.prepare_data()
+            
+            if figsize is None:
+                figsize = self.default_figsize
+                
+            # Create a new figure with higher DPI
+            fig = plt.figure(figsize=figsize, dpi=100)
+            ax = fig.add_subplot(111)
+            
+            # Filter data for the specified category
+            cat_df = self.data[self.data["Category"] == category]
             
             if cat_df.empty:
-                print(f"No data for category: {category}")
-                ax.text(0.5, 0.5, f"No data for {category}", ha="center", va="center", color="#FAFAFA")
+                ax.text(0.5, 0.5, f"No data for category: {category}", 
+                       horizontalalignment='center', verticalalignment='center',
+                       transform=ax.transAxes, fontsize=12)
                 return fig
                 
-            # Convert values to numeric to ensure they plot correctly - keep zero values
-            cat_df["Value"] = pd.to_numeric(cat_df["Value"], errors="coerce")
-            cat_df["Week"] = pd.to_numeric(cat_df["Week"], errors="coerce")
-            cat_df = cat_df.dropna(subset=["Value", "Week"])
-            
-            # Get all weeks in the data
+            # Get all weeks for this category
             all_weeks = sorted(cat_df["Week"].unique())
-            print(f"Weeks for this category: {all_weeks}")
-            
-            # Set x-axis range if specified
-            if x_range and len(x_range) == 2:
-                start_week, end_week = x_range
-                # Generate a complete list of weeks in the range
-                weeks = list(range(start_week, end_week + 1))
-                # Filter data to only include weeks in the range
-                cat_df = cat_df[(cat_df["Week"] >= start_week) & (cat_df["Week"] <= end_week)]
-            else:
-                # Use all available weeks
-                min_week = int(cat_df["Week"].min())
-                max_week = int(cat_df["Week"].max())
+            if all_weeks:
+                min_week = min(all_weeks)
+                max_week = max(all_weeks)
                 weeks = list(range(min_week, max_week + 1))
-            
-            # Check if this is a "lower is better" metric
-            is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
-            
-            # Extract goal and outcome data
-            goal_df = cat_df[cat_df["Type"] == "Mål"].copy()
-            print(f"Goal data: {len(goal_df)} rows")
-            if not goal_df.empty:
-                print(f"Goal data sample: {goal_df.head(3)}")
-                # Debug: Check if there are any zero values
-                zero_goals = goal_df[goal_df["Value"] == 0]
-                print(f"Zero value goals: {len(zero_goals)} rows - {zero_goals['Week'].tolist() if not zero_goals.empty else []}")
+                    
+                # Extract goal and outcome data
+                goal_df = cat_df[cat_df["Type"] == "Mål"].copy()
+                print(f"Goal data: {len(goal_df)} rows")
+                if not goal_df.empty:
+                    print(f"Goal data sample: {goal_df.head(3)}")
+                    # Debug: Check if there are any zero values
+                    zero_goals = goal_df[goal_df["Value"] == 0]
+                    print(f"Zero value goals: {len(zero_goals)} rows - {zero_goals['Week'].tolist() if not zero_goals.empty else []}")
+                    
+                    # Create a complete dataframe with all weeks
+                    complete_goal_df = pd.DataFrame({"Week": weeks})
+                    # Merge with actual data, filling in gaps with zeros
+                    goal_df = pd.merge(complete_goal_df, goal_df, on="Week", how="left")
+                    goal_df["Value"] = goal_df["Value"].fillna(0)
+                    
+                    # Sort by week for proper line plotting
+                    goal_df = goal_df.sort_values("Week")
+                    
+                    print(f"Processed goal data - Weeks: {goal_df['Week'].tolist()}")
+                    print(f"Processed goal data - Values: {goal_df['Value'].tolist()}")
+                    
+                    goal_x = goal_df["Week"].tolist()
+                    goal_y = goal_df["Value"].tolist()
+                else:
+                    goal_x = []
+                    goal_y = []
                 
-                # Create a complete dataframe with all weeks
-                complete_goal_df = pd.DataFrame({"Week": weeks})
-                # Merge with actual data, filling in gaps with zeros
-                goal_df = pd.merge(complete_goal_df, goal_df, on="Week", how="left")
-                goal_df["Value"] = goal_df["Value"].fillna(0)
-                
-                # Convert to native Python types to avoid PyArrow issues
-                goal_x = [int(x) for x in goal_df["Week"].tolist()]
-                goal_y = [float(y) if not pd.isna(y) else 0.0 for y in goal_df["Value"].tolist()]
-                # Debug: Print processed goal data
-                print(f"Processed goal data - Weeks: {goal_x}")
-                print(f"Processed goal data - Values: {goal_y}")
-            else:
-                goal_x = []
-                goal_y = []
-            
-            # Extract outcome data
-            outcome_df = cat_df[cat_df["Type"] == "Utfall"].copy()
-            print(f"Outcome data: {len(outcome_df)} rows")
-            if not outcome_df.empty:
-                print(f"Outcome data sample: {outcome_df.head(3)}")
-                
-                # Create a complete dataframe with all weeks
-                complete_outcome_df = pd.DataFrame({"Week": weeks})
-                # Merge with actual data, filling in gaps with zeros
-                outcome_df = pd.merge(complete_outcome_df, outcome_df, on="Week", how="left")
-                outcome_df["Value"] = outcome_df["Value"].fillna(0)
-                
-                # Convert to native Python types to avoid PyArrow issues
-                outcome_x = [int(x) for x in outcome_df["Week"].tolist()]
-                outcome_y = [float(y) if not pd.isna(y) else 0.0 for y in outcome_df["Value"].tolist()]
-            else:
-                # If there's no outcome data but we have goals, create zero outcomes for all weeks
-                if goal_x:
-                    outcome_x = goal_x.copy()
-                    outcome_y = [0.0] * len(goal_x)
+                # Extract outcome data
+                outcome_df = cat_df[cat_df["Type"] == "Utfall"].copy()
+                print(f"Outcome data: {len(outcome_df)} rows")
+                if not outcome_df.empty:
+                    print(f"Outcome data sample: {outcome_df.head(3)}")
+                    
+                    # Create a complete dataframe with all weeks
+                    complete_outcome_df = pd.DataFrame({"Week": weeks})
+                    # Merge with actual data, filling in gaps with zeros
+                    outcome_df = pd.merge(complete_outcome_df, outcome_df, on="Week", how="left")
+                    outcome_df["Value"] = outcome_df["Value"].fillna(0)
+                    
+                    # Sort by week for proper line plotting
+                    outcome_df = outcome_df.sort_values("Week")
+                    
+                    outcome_x = outcome_df["Week"].tolist()
+                    outcome_y = outcome_df["Value"].tolist()
                 else:
                     outcome_x = []
                     outcome_y = []
                 
-            # Plot goals (dotted line)
-            if goal_x:
-                print(f"Plotting goals: {goal_x}, {goal_y}")
-                # Ensure we're plotting all values, even zeros
-                ax.plot(
-                    goal_x,
-                    goal_y,
-                    color=self.colors["Mål"],
-                    linestyle=":",
-                    marker="o" if self.show_markers else None,
-                    label="Mål",
-                    linewidth=2.5,
-                    markersize=8,
-                    drawstyle='steps-post'  # This ensures we don't skip zero values in the line
-                )
-                
-            # Plot outcomes (solid line)
-            if outcome_x:
-                print(f"Plotting outcomes: {outcome_x}, {outcome_y}")
-                # Ensure we're plotting all values, even zeros
-                ax.plot(
-                    outcome_x,
-                    outcome_y,
-                    color=self.colors["Utfall"],
-                    linestyle="-",
-                    marker="o" if self.show_markers else None,
-                    label="Utfall",
-                    linewidth=2.5,
-                    markersize=8,
-                    drawstyle='steps-post'  # This ensures we don't skip zero values in the line
-                )
-            
-            # Set plot title and labels
-            ax.set_title(f"{category}: Mål vs. Utfall", color="#FFFFFF", fontsize=14, fontweight='bold')
-            ax.set_xlabel("Week", color="#FAFAFA", fontsize=12)
-            
-            # If it's a "lower is better" metric, invert the y-axis
-            if is_lower_better:
-                ax.invert_yaxis()
-                # Set y-axis label to indicate inversion
-                ax.set_ylabel("Value (lower is better)", color="#FAFAFA", fontsize=12)
-            else:
-                ax.set_ylabel("Value", color="#FAFAFA", fontsize=12)
-                
-            # Format x-axis to only show the weeks that are available
-            if weeks:
-                ax.set_xticks(weeks)
-                ax.set_xticklabels([f"Week {w}" for w in weeks], fontsize=10)
-                
-                # Set x-axis limits to ensure all weeks are shown
-                ax.set_xlim(min(weeks) - 0.5, max(weeks) + 0.5)
-                
-            # Add data point annotations
-            if goal_x:
-                for x, y in zip(goal_x, goal_y):
-                    text_val = f"{int(y)}" if y == int(y) else f"{y:.1f}"
-                    ax.annotate(
-                        text_val,
-                        (x, y),
-                        textcoords="offset points",
-                        xytext=(0, 10),
-                        ha='center',
+                # Plot goals (dotted line)
+                if goal_x:
+                    print(f"Plotting goals: {goal_x}, {goal_y}")
+                    # Ensure we're plotting all values, even zeros
+                    ax.plot(
+                        goal_x,
+                        goal_y,
                         color=self.colors["Mål"],
-                        fontweight='bold',
-                        fontsize=10,
-                        bbox=dict(boxstyle="round,pad=0.3", fc="black", alpha=0.6, ec=self.colors["Mål"])
+                        linestyle=":",
+                        marker="o" if self.show_markers else None,
+                        label="Mål",
+                        linewidth=2.5,
+                        markersize=8,
+                        drawstyle='steps-post'  # This ensures we don't skip zero values in the line
                     )
-
-            if outcome_x:
-                for x, y in zip(outcome_x, outcome_y):
-                    text_val = f"{int(y)}" if y == int(y) else f"{y:.1f}"
-                    ax.annotate(
-                        text_val,
-                        (x, y),
-                        textcoords="offset points",
-                        xytext=(0, 10),
-                        ha='center',
+                
+                # Plot outcomes (solid line)
+                if outcome_x:
+                    print(f"Plotting outcomes: {outcome_x}, {outcome_y}")
+                    # Ensure we're plotting all values, even zeros
+                    ax.plot(
+                        outcome_x,
+                        outcome_y,
                         color=self.colors["Utfall"],
-                        fontweight='bold',
-                        fontsize=10,
-                        bbox=dict(boxstyle="round,pad=0.3", fc="black", alpha=0.6, ec=self.colors["Utfall"])
+                        linestyle="-",
+                        marker="o" if self.show_markers else None,
+                        label="Utfall",
+                        linewidth=2.5,
+                        markersize=8,
+                        drawstyle='steps-post'  # This ensures we don't skip zero values in the line
                     )
-            
-            # Add legend with larger font
-            ax.legend(title="", frameon=True, facecolor="#262730", edgecolor="#666666", fontsize=12)
-            
-            # Add grid if enabled
-            if self.show_grid:
-                ax.grid(True, linestyle="--", alpha=0.7, color="#444444")
-            
-            # Tight layout and a bit more padding for labels
-            fig.tight_layout(pad=2.0)
-            print("Plot created successfully")
+                
+                # Add current week marker if enabled
+                if self.show_current_week and self.current_week is not None:
+                    if min_week <= self.current_week <= max_week:
+                        print(f"Adding current week marker at week {self.current_week}")
+                        ax.axvline(x=self.current_week, color=self.colors["current_week"], 
+                                  linestyle='-', linewidth=1.5, alpha=0.7,
+                                  label=f"Week {self.current_week}")
+                
+                # Set plot title and labels with higher font sizes
+                ax.set_title(f"{category}", fontsize=16, pad=20)
+                ax.set_xlabel("Week", fontsize=12)
+                ax.set_ylabel("Value", fontsize=12)
+                
+                # Check if this is a "lower is better" metric
+                is_lower_better = any(pattern in category.lower() for pattern in ["lägre", "mindre", "lower", "utgifter"])
+                
+                if is_lower_better:
+                    # For "lower is better" metrics, outcomes below goal is good
+                    for i in range(len(goal_x)):
+                        if i < len(outcome_x) and outcome_x[i] == goal_x[i]:
+                            if outcome_y[i] <= goal_y[i]:
+                                # Good performance (outcome <= goal for lower-is-better)
+                                ax.fill_between([goal_x[i]-0.5, goal_x[i]+0.5], 
+                                               0, outcome_y[i], 
+                                               color='green', alpha=0.1)
+                            else:
+                                # Bad performance (outcome > goal for lower-is-better)
+                                ax.fill_between([goal_x[i]-0.5, goal_x[i]+0.5], 
+                                               0, outcome_y[i], 
+                                               color='red', alpha=0.1)
+                else:
+                    # For "higher is better" metrics, outcomes above goal is good
+                    for i in range(len(goal_x)):
+                        if i < len(outcome_x) and outcome_x[i] == goal_x[i]:
+                            if outcome_y[i] >= goal_y[i]:
+                                # Good performance (outcome >= goal for higher-is-better)
+                                ax.fill_between([goal_x[i]-0.5, goal_x[i]+0.5], 
+                                               0, outcome_y[i], 
+                                               color='green', alpha=0.1)
+                            else:
+                                # Bad performance (outcome < goal for higher-is-better)
+                                ax.fill_between([goal_x[i]-0.5, goal_x[i]+0.5], 
+                                               0, outcome_y[i], 
+                                               color='red', alpha=0.1)
+                
+                # Customize x-axis
+                if x_range:
+                    ax.set_xlim(x_range)
+                else:
+                    ax.set_xlim(min_week - 0.5, max_week + 0.5)
+                    
+                # Use integer ticks for week numbers
+                from matplotlib.ticker import MaxNLocator
+                ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+                
+                # Adjust y-axis to start from 0
+                bottom, top = ax.get_ylim()
+                if bottom > 0:
+                    bottom = 0
+                ax.set_ylim(bottom, top * 1.1)  # Add 10% padding at the top
+                
+                # Add grid
+                if self.show_grid:
+                    ax.grid(True, linestyle='--', alpha=0.7)
+                
+                # Add legend with larger font
+                ax.legend(fontsize=12)
+                
+            return fig
             
         except Exception as e:
             print(f"Error creating metric comparison plot: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            ax.text(0.5, 0.5, f"Error creating plot: {str(e)}", ha="center", va="center", color="red")
-        
-        return fig
+            fig = plt.figure(figsize=figsize, dpi=100)
+            ax = fig.add_subplot(111)
+            ax.text(0.5, 0.5, f"Error creating plot: {str(e)}", 
+                   horizontalalignment='center', verticalalignment='center',
+                   transform=ax.transAxes, fontsize=12, color='red')
+            return fig
         
     def create_category_group_plots(self, categories, group_name, figsize=None, x_range=None):
         """
@@ -541,6 +532,14 @@ class BalthazarVisualizer:
                 # Add legend and grid
                 axes[i].legend(title="", frameon=True, facecolor="#262730", edgecolor="#666666", fontsize=8)
                 axes[i].grid(True, linestyle="--", alpha=0.7, color="#444444")
+                
+                # Add current week marker if enabled
+                if self.show_current_week and self.current_week is not None:
+                    if weeks and min(weeks) <= self.current_week <= max(weeks):
+                        print(f"Adding current week marker at week {self.current_week} for category: {category}")
+                        axes[i].axvline(x=self.current_week, color=self.colors["current_week"], 
+                                      linestyle='-', linewidth=1.5, alpha=0.7,
+                                      label=f"Week {self.current_week}")
         
         # Hide unused subplots
         for j in range(i + 1, len(axes)):

@@ -27,7 +27,10 @@ if 'settings' not in st.session_state:
             'show_grid': True,
             'show_markers': True,
             'goal_color': '#00BFFF',
-            'outcome_color': '#FF4B4B'
+            'outcome_color': '#FF4B4B',
+            'show_current_week': False,
+            'current_week': None,
+            'current_week_color': '#FFFF00'
         }
     }
 
@@ -236,9 +239,36 @@ with st.sidebar:
         show_grid = st.checkbox("Show Grid", value=st.session_state.settings['graph_settings']['show_grid'])
         show_markers = st.checkbox("Show Markers", value=st.session_state.settings['graph_settings']['show_markers'])
         
+        # Current week marker
+        show_current_week = st.checkbox("Show Current Week Marker", 
+                                       value=st.session_state.settings['graph_settings'].get('show_current_week', False),
+                                       help="Display a yellow vertical line marking the current week")
+                                       
+        # Determine available weeks in the data for the current week marker
+        available_weeks = []
+        if 'data' in st.session_state and st.session_state.data is not None:
+            # Check if 'Week' column exists in the data
+            if 'Week' in st.session_state.data.columns:
+                available_weeks = sorted(st.session_state.data["Week"].unique())
+            # If Week column doesn't exist but Date does (they're often the same), use Date instead
+            elif 'Date' in st.session_state.data.columns:
+                available_weeks = sorted(st.session_state.data["Date"].unique())
+        
+        min_week = min(available_weeks) if available_weeks else 1
+        max_week = max(available_weeks) if available_weeks else 53
+        
+        current_week = st.number_input("Current Week Number", 
+                                      value=st.session_state.settings['graph_settings'].get('current_week', 
+                                                                                           max_week),  # Default to max available week
+                                      min_value=min_week, 
+                                      max_value=max_week,
+                                      help="Which week to mark as current (can be any week in the data)")
+        
         # Colors
         goal_color = st.color_picker("Goal Color", value=st.session_state.settings['graph_settings']['goal_color'])
         outcome_color = st.color_picker("Outcome Color", value=st.session_state.settings['graph_settings']['outcome_color'])
+        current_week_color = st.color_picker("Current Week Marker Color", 
+                                            value=st.session_state.settings['graph_settings'].get('current_week_color', '#FFFF00'))
         
         # Save settings button
         if st.button("Save Graph Settings"):
@@ -247,7 +277,10 @@ with st.sidebar:
                 'show_grid': show_grid,
                 'show_markers': show_markers,
                 'goal_color': goal_color,
-                'outcome_color': outcome_color
+                'outcome_color': outcome_color,
+                'show_current_week': show_current_week,
+                'current_week': current_week,
+                'current_week_color': current_week_color
             })
             st.success("Graph settings saved!")
     
@@ -497,12 +530,30 @@ if 'data' in st.session_state and st.session_state.data is not None:
         if 'data' in st.session_state and st.session_state.data is not None:
             df = st.session_state.data.copy()
             
-            # Create visualizer with custom settings
+            # Update visualizer with data and settings
             visualizer = BalthazarVisualizer(df)
-            visualizer.colors = {
-                "Mål": st.session_state.settings['graph_settings']['goal_color'],
-                "Utfall": st.session_state.settings['graph_settings']['outcome_color']
-            }
+            
+            # Apply custom settings
+            visualizer.colors["Mål"] = st.session_state.settings['graph_settings']['goal_color']
+            visualizer.colors["Utfall"] = st.session_state.settings['graph_settings']['outcome_color']
+            visualizer.show_grid = st.session_state.settings['graph_settings']['show_grid']
+            visualizer.show_markers = st.session_state.settings['graph_settings']['show_markers']
+            visualizer.default_figsize = st.session_state.settings['graph_settings']['figsize']
+            
+            # Current week marker settings
+            if 'show_current_week' in st.session_state.settings['graph_settings']:
+                visualizer.show_current_week = st.session_state.settings['graph_settings']['show_current_week']
+                print(f"Setting show_current_week to: {visualizer.show_current_week}")
+            if 'current_week' in st.session_state.settings['graph_settings']:
+                visualizer.current_week = st.session_state.settings['graph_settings']['current_week']
+                print(f"Setting current_week to: {visualizer.current_week}")
+            if 'current_week_color' in st.session_state.settings['graph_settings']:
+                visualizer.colors["current_week"] = st.session_state.settings['graph_settings']['current_week_color']
+                print(f"Setting current_week_color to: {visualizer.colors['current_week']}")
+                
+            # Display notification if current week marker is enabled
+            if visualizer.show_current_week and visualizer.current_week is not None:
+                st.success(f"Current week marker enabled for week {visualizer.current_week}")
             
             # Group categories
             financial = ["Försäljning SEK eller högre", "Utgifter SEK eller lägre", "Resultat SEK"]
@@ -786,6 +837,25 @@ if 'data' in st.session_state and st.session_state.data is not None:
                                 width=None,
                                 margin=dict(l=50, r=50, t=50, b=50)
                             )
+                            
+                            # Add current week marker if enabled
+                            if visualizer.show_current_week and visualizer.current_week is not None:
+                                if min_week <= visualizer.current_week <= max_week:
+                                    # Add a vertical line for the current week
+                                    fig.add_shape(
+                                        type="line",
+                                        x0=visualizer.current_week,
+                                        y0=0,
+                                        x1=visualizer.current_week,
+                                        y1=1,
+                                        yref="paper",
+                                        line=dict(
+                                            color=visualizer.colors["current_week"],
+                                            width=1.5,
+                                            dash="solid",
+                                        ),
+                                        opacity=0.7,
+                                    )
                             
                             # Show goal and outcome counts
                             st.caption(f"Data points: Mål: {len(goal_data)}, Utfall: {len(outcome_data)}")
